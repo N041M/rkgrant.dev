@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Ronald Karel Grant · Developer and Data Science student</title>
+  <meta name="description" content="Portfolio of Ronald Karel Grant, a developer and Data Science student from Jablonec nad Nisou who works on NLP research, AI agent systems, full-stack apps and developer tools.">
+  <meta name="author" content="Ronald Karel Grant">
+  <link rel="alternate" hreflang="en" href="https://rkgrant.dev/?lang=en">
+  <link rel="alternate" hreflang="cs" href="https://rkgrant.dev/?lang=cs">
+  <link rel="alternate" hreflang="x-default" href="https://rkgrant.dev/">
+  <meta name="theme-color" content="#f3f2ee" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://rkgrant.dev/">
+  <meta property="og:title" content="Ronald Karel Grant">
+  <meta property="og:description" content="Developer and Data Science student working on NLP research, AI agent systems, full-stack apps and developer tools.">
+  <meta property="og:image" content="https://rkgrant.dev/assets/img/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:locale" content="en_GB">
+  <meta property="og:locale:alternate" content="cs_CZ">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="assets/img/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+  <link rel="preload" href="assets/fonts/DepartureMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="assets/fonts/Geist-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="assets/css/site.css">
+  <script>
+    // Language and theme are set before first paint so the page does not flash.
+    (function () {
+      var d = document.documentElement, s = null, l = null, t = null;
+      try { s = window.localStorage; } catch (e) {}
+      var q = new URLSearchParams(location.search).get("lang");
+      try { l = s && s.getItem("lang"); t = s && s.getItem("theme"); } catch (e) {}
+      if (q === "cs" || q === "en") l = q;
+      if (l !== "cs" && l !== "en") {
+        var list = navigator.languages || [navigator.language || "en"];
+        l = "en";
+        for (var i = 0; i < list.length; i++) {
+          var c = String(list[i] || "").toLowerCase();
+          if (c.indexOf("cs") === 0 || c.indexOf("sk") === 0) { l = "cs"; break; }
+          if (c.indexOf("en") === 0) break;
+        }
+      }
+      d.lang = l;
+      if (t === "light" || t === "dark") d.setAttribute("data-theme", t);
+    })();
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Person",
+    "name": "Ronald Karel Grant",
+    "url": "https://rkgrant.dev/",
+    "email": "mailto:ronaldkarelgrant@email.cz",
+    "jobTitle": "Developer",
+    "address": { "@type": "PostalAddress", "addressLocality": "Jablonec nad Nisou", "addressCountry": "CZ" },
+    "alumniOf": { "@type": "CollegeOrUniversity", "name": "University of Hradec Králové" },
+    "knowsLanguage": ["cs", "en", "de"],
+    "sameAs": ["https://github.com/N041M", "https://www.linkedin.com/in/rkgrant"]
+  }
+  </script>
+  <script defer src="assets/js/scramble.js"></script>
+  <script defer src="assets/js/field.js"></script>
+  <script defer src="assets/js/figures.js"></script>
+  <script defer src="assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main"><span lang="en">Skip to content</span><span lang="cs">Přeskočit na obsah</span></a>
+  <canvas id="field" aria-hidden="true"></canvas>
+
+  <header class="top">
+    <a class="pill brand ko" href="#top" aria-label="rkgrant.dev"><span data-scramble>rkgrant.dev</span><span class="cursor" aria-hidden="true"></span></a>
+    <div class="pill bar ko">
+      <nav class="nav" data-label-en="Sections" data-label-cs="Sekce" aria-label="Sections">
+        <a href="#projects" data-scramble><span lang="en">Projects</span><span lang="cs">Projekty</span></a>
+        <a href="#experience" data-scramble><span lang="en">Experience</span><span lang="cs">Zkušenosti</span></a>
+        <a href="#skills" data-scramble><span lang="en">Skills</span><span lang="cs">Dovednosti</span></a>
+        <a href="#contact" data-scramble><span lang="en">Contact</span><span lang="cs">Kontakt</span></a>
+      </nav>
+      <div class="lang" role="group" data-label-en="Language" data-label-cs="Jazyk" aria-label="Language">
+        <button type="button" data-set-lang="cs" lang="cs-CZ" aria-label="Čeština" aria-pressed="false">CZ</button>
+        <button type="button" data-set-lang="en" lang="en-GB" aria-label="English" aria-pressed="true">EN</button>
+      </div>
+      <button type="button" class="theme" data-theme-toggle data-label-en="Switch between light and dark" data-label-cs="Přepnout světlý a tmavý režim" aria-label="Switch between light and dark"><i aria-hidden="true"></i></button>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero" id="top" data-hero>
+      <div class="wrap hero-inner">
+        <p class="eyebrow ko" data-scramble="180"><span class="sq" aria-hidden="true"></span><span lang="en">Developer and Data Science student</span><span lang="cs">Vývojář a student Data Science</span></p>
+        <h1 class="name ko" data-scramble="0"><span class="line">Ronald</span> <span class="line">Karel Grant</span></h1>
+        <p class="lede ko" lang="en">I studied Information Management at the University of Hradec Králové and I am starting a master’s degree in Data Science. In my own projects I work on NLP for market research, AI agent systems, full-stack apps and developer tools.</p>
+        <p class="lede ko" lang="cs">Vystudoval jsem Informační management na FIM Univerzity Hradec Králové a nastupuji do navazujícího magisterského studia Data Science. Ve vlastních projektech se věnuji průzkumu trhu pomocí NLP, návrhu agentních systémů s umělou inteligencí, full-stack vývoji a tvorbě nástrojů.</p>
+        <div class="actions">
+          <a class="btn btn-solid ko" href="#projects" data-scramble><span lang="en">View projects</span><span lang="cs">Zobrazit projekty</span><span aria-hidden="true">↓</span></a>
+          <a class="btn ko" href="https://github.com/N041M" data-scramble><span>GitHub</span><span aria-hidden="true">↗</span></a>
+          <a class="btn ko" href="https://www.linkedin.com/in/rkgrant" data-scramble><span>LinkedIn</span><span aria-hidden="true">↗</span></a>
+          <a class="btn ko" href="mailto:ronaldkarelgrant@email.cz" data-scramble><span>E-mail</span><span aria-hidden="true">→</span></a>
+        </div>
+        <p class="place ko" data-scramble="320"><span>Jablonec nad Nisou</span><span aria-hidden="true">·</span><span lang="en">Czech Republic</span><span lang="cs">Česká republika</span></p>
+      </div>
+    </section>
+
+    <section class="section" id="projects" aria-labelledby="projects-h">
+      <div class="wrap">
+        <header class="section-head ko">
+          <p class="idx" data-scramble>01</p>
+          <h2 id="projects-h" data-scramble><span lang="en">Projects</span><span lang="cs">Projekty</span></h2>
+        </header>
+
+        <div class="cards">
+          <article class="card ko">
+            <figure class="fig">
+              <pre class="plot" data-figure="grimstat" aria-hidden="true"></pre>
+              <figcaption data-scramble><span lang="en">Fig. 1</span><span lang="cs">Obr. 1</span><span lang="en">Damage distribution</span><span lang="cs">Rozdělení poškození</span></figcaption>
+            </figure>
+            <div class="card-body">
+              <p class="card-meta" data-scramble><span>2026</span><span aria-hidden="true">·</span><span lang="en">Live at grimstat.com</span><span lang="cs">V provozu na grimstat.com</span></p>
+              <h3 class="card-title"><a href="https://grimstat.com">Grimstat</a></h3>
+              <p lang="en">An unofficial statistics dashboard and army builder for Warhammer 40,000. The calculator returns the full damage distribution of an attack instead of a single average. The army builder checks the 11th-edition rules while you type, and a 3D battle table measures line of sight between models. Everything a player makes stays on their own device.</p>
+              <p lang="cs">Neoficiální statistický nástroj a tvorba armád pro Warhammer 40,000. Kalkulačka místo jednoho průměru vrací celé rozdělení pravděpodobnosti poškození. Tvorba armád průběžně kontroluje pravidla 11. edice a 3D bojiště měří přímou viditelnost mezi modely. Vše, co hráč vytvoří, zůstává v jeho zařízení.</p>
+              <ul class="tags"><li>TypeScript</li><li>React</li><li>three.js</li><li>Cloudflare Workers</li><li>PWA</li></ul>
+              <p class="links"><a href="https://grimstat.com">grimstat.com <span aria-hidden="true">↗</span></a><a href="https://github.com/N041M/Grimstat">GitHub <span aria-hidden="true">↗</span></a></p>
+            </div>
+          </article>
+
+          <article class="card ko">
+            <figure class="fig">
+              <pre class="plot" data-figure="sentiment" aria-hidden="true"></pre>
+              <figcaption data-scramble><span lang="en">Fig. 2</span><span lang="cs">Obr. 2</span><span lang="en">Statements and market moves</span><span lang="cs">Vyjádření a pohyby trhu</span></figcaption>
+            </figure>
+            <div class="card-body">
+              <p class="card-meta" data-scramble><span lang="en">In progress</span><span lang="cs">Probíhá</span><span aria-hidden="true">·</span><span lang="en">Planned master’s thesis</span><span lang="cs">Plánovaná diplomová práce</span></p>
+              <h3 class="card-title"><a href="https://github.com/N041M/Sentiment-Research">Sentiment Signal</a></h3>
+              <p lang="en">A research system that relates the sentiment of public statements by central banks and institutions (Fed, ECB, BoE, BIS, IMF and others) to what the markets actually did. It collects statements with 14+ scrapers, scores them with FinBERT and sentence-transformers, groups them into topics with BERTopic and tests their value in LSTM ablation studies. All data is handled point-in-time, so the model never sees information from the future.</p>
+              <p lang="cs">Výzkumný systém, který propojuje sentiment veřejných vyjádření centrálních bank a institucí (Fed, ECB, BoE, BIS, MMF a dalších) se skutečným vývojem trhů. Vyjádření sbírá pomocí 14+ scraperů, skóruje je modely FinBERT a sentence-transformers, shlukuje je do témat pomocí BERTopic a jejich přínos ověřuje ablačními studiemi s LSTM. Všechna data se zpracovávají point-in-time, aby model nikdy nenahlížel do budoucnosti.</p>
+              <p class="figures" lang="en">≈5,000 statements · 49,000 price observations · 16 markets · 100+ unit tests</p>
+              <p class="figures" lang="cs">≈5 000 vyjádření · 49 000 cenových pozorování · 16 trhů · 100+ jednotkových testů</p>
+              <ul class="tags"><li>Python</li><li>PyTorch</li><li>Hugging Face</li><li>PostgreSQL/pgvector</li><li>FastAPI</li><li>Streamlit</li><li>Docker</li></ul>
+              <p class="links"><a href="https://github.com/N041M/Sentiment-Research">GitHub <span aria-hidden="true">↗</span></a></p>
+            </div>
+          </article>
+
+          <article class="card ko">
+            <figure class="fig">
+              <pre class="plot" data-figure="addison" aria-hidden="true"></pre>
+              <figcaption data-scramble><span lang="en">Fig. 3</span><span lang="cs">Obr. 3</span><span lang="en">Asking before it acts</span><span lang="cs">Nejdřív se zeptá</span></figcaption>
+            </figure>
+            <div class="card-body">
+              <p class="card-meta" data-scramble><span>2026</span><span aria-hidden="true">·</span><span lang="en">In progress</span><span lang="cs">Probíhá</span></p>
+              <h3 class="card-title"><a href="https://github.com/N041M/Addison">Addison</a></h3>
+              <p lang="en">A desktop AI assistant for people who don’t write code. It runs on your own computer, explains in plain language what it wants to do before it does it, and can undo it afterwards. It works with local models through Ollama and with cloud models from Anthropic, OpenAI and Google. I designed the risk-tiered tool permissions and a conversational first-run guide that sets the app up without the user having to deal with API keys or config files.</p>
+              <p lang="cs">Desktopový AI asistent pro lidi, kteří neprogramují. Běží na vlastním počítači, před každou akcí srozumitelně vysvětlí, co chce udělat, a umí ji vrátit zpět. Funguje s lokálními modely přes Ollama i s cloudovými modely od Anthropicu, OpenAI a Googlu. Navrhl jsem systém oprávnění nástrojů odstupňovaný podle rizika a konverzačního průvodce prvním spuštěním, který aplikaci nastaví, aniž by uživatel musel řešit API klíče nebo konfigurační soubory.</p>
+              <ul class="tags"><li>Tauri 2 (Rust)</li><li>Python 3.12</li><li>React</li><li>SQLite</li><li>JSON-RPC</li></ul>
+              <p class="links"><a href="https://github.com/N041M/Addison">GitHub <span aria-hidden="true">↗</span></a></p>
+            </div>
+          </article>
+
+          <article class="card ko">
+            <figure class="fig">
+              <pre class="plot" data-figure="snp" aria-hidden="true"></pre>
+              <figcaption data-scramble><span lang="en">Fig. 4</span><span lang="cs">Obr. 4</span><span>Model V3</span></figcaption>
+            </figure>
+            <div class="card-body">
+              <p class="card-meta" data-scramble><span>2025–2026</span><span aria-hidden="true">·</span><span lang="en">Bachelor’s thesis</span><span lang="cs">Bakalářská práce</span></p>
+              <h3 class="card-title"><a href="https://github.com/N041M/SnP500-Forecasting-Models"><span lang="en">S&amp;P 500 forecasting</span><span lang="cs">Predikce indexu S&amp;P 500</span></a></h3>
+              <p lang="en">My bachelor’s thesis compared three generations of neural networks for predicting the direction of the S&amp;P 500: LSTM, Transformer and a hybrid of the two. The final model combines bidirectional LSTM layers, three pre-norm Transformer blocks and a custom FeatureAttention layer that learns the weight of each of 93 inputs (technical indicators and macro data from FRED). A diagnostic suite detects forecast collapse and compares directional accuracy with a naive model that always predicts a rise. The results were consistent with the weak form of the efficient market hypothesis.</p>
+              <p lang="cs">Bakalářská práce porovnávala tři generace neuronových sítí pro předpověď směru indexu S&amp;P 500: LSTM, Transformer a jejich hybrid. Finální model kombinuje obousměrné vrstvy LSTM, tři pre-norm Transformer bloky a vlastní vrstvu FeatureAttention, která se učí důležitost každého z 93 vstupů (technické indikátory a makroekonomická data z FRED). Sada diagnostických nástrojů odhaluje kolaps předpovědi a porovnává směrovou přesnost s naivním modelem, který vždy předpovídá růst. Výsledky odpovídaly slabé formě hypotézy efektivních trhů.</p>
+              <ul class="tags"><li>Python</li><li>TensorFlow/Keras</li><li>scikit-learn</li><li>pandas</li></ul>
+              <p class="links"><a href="https://github.com/N041M/SnP500-Forecasting-Models">GitHub <span aria-hidden="true">↗</span></a><a href="https://theses.cz/id/i8juls/"><span lang="en">Thesis</span><span lang="cs">Text práce</span> <span aria-hidden="true">↗</span></a></p>
+            </div>
+          </article>
+        </div>
+
+        <h3 class="subhead ko" data-scramble><span lang="en">Other projects</span><span lang="cs">Další projekty</span></h3>
+        <ul class="more ko">
+          <li>
+            <p class="more-name"><a href="https://github.com/N041M/Almanac">Almanac</a></p>
+            <div class="more-body">
+              <p lang="en">A local-first calendar in which every feature is a separate module. ESLint enforces the boundaries between modules, and meal planning is the first one.</p>
+              <p lang="cs">Kalendář fungující přednostně lokálně, ve kterém je každá funkce samostatný modul. Hranice mezi moduly hlídá ESLint a prvním modulem je plánování jídel.</p>
+              <p class="more-tags">TypeScript · React · Tauri · Vitest</p>
+            </div>
+            <a class="more-link" href="https://github.com/N041M/Almanac">GitHub <span aria-hidden="true">↗</span></a>
+          </li>
+          <li>
+            <p class="more-name">JabkoZdarma</p>
+            <div class="more-body">
+              <p lang="en">A community map of fruit trees that anyone can pick from. People pin trees, add photos and report what is ripe right now. The map snaps between four zoom levels, from a single tree up to a whole region.</p>
+              <p lang="cs">Komunitní mapa ovocných stromů, ze kterých si může natrhat kdokoli. Lidé přidávají stromy a fotky a hlásí, co je právě zralé. Mapa přeskakuje mezi čtyřmi úrovněmi přiblížení, od jednoho stromu až po celý kraj.</p>
+              <p class="more-tags">Expo · React Native · TypeScript · MapLibre GL · Supabase</p>
+            </div>
+            <span class="more-link muted"><span lang="en">In development</span><span lang="cs">Ve vývoji</span></span>
+          </li>
+          <li>
+            <p class="more-name"><a href="https://github.com/N041M/PyQuest">PyQuest</a></p>
+            <div class="more-body">
+              <p lang="en">A Python course that runs in the terminal, with 142 puzzles in 16 chapters. The checker changes the numbers on every run, so a copied answer does not pass.</p>
+              <p lang="cs">Kurz Pythonu v terminálu se 142 úlohami v 16 kapitolách. Validátor při každém spuštění mění čísla, takže opsaná odpověď neprojde.</p>
+              <p class="more-tags">Python · <span lang="en">standard library only</span><span lang="cs">jen standardní knihovna</span></p>
+            </div>
+            <a class="more-link" href="https://github.com/N041M/PyQuest">GitHub <span aria-hidden="true">↗</span></a>
+          </li>
+          <li>
+            <p class="more-name"><a href="https://github.com/N041M/Shadow-Maze">Shadow Maze</a></p>
+            <div class="more-body">
+              <p lang="en">A first-person horror game in Unity 6. The player finds the way through procedurally generated mazes by following a 3D sound that walls muffle. It was first made for VR.</p>
+              <p lang="cs">Hororová hra z pohledu první osoby v Unity 6. Hráč se v procedurálně generovaném bludišti orientuje podle prostorového zvuku tlumeného stěnami. Původně vznikla pro VR.</p>
+              <p class="more-tags">Unity 6 · C#</p>
+            </div>
+            <a class="more-link" href="https://github.com/N041M/Shadow-Maze">GitHub <span aria-hidden="true">↗</span></a>
+          </li>
+          <li>
+            <p class="more-name"><a href="https://github.com/N041M/Fireteam-Finder">Fireteam Finder</a></p>
+            <div class="more-body">
+              <p lang="en">A Discord bot that organises Destiny 2 groups. It creates a channel and a role for each activity, keeps a live roster with a queue of substitutes, and cleans up when the activity ends.</p>
+              <p lang="cs">Discord bot pro organizaci skupin v Destiny 2. Pro každou aktivitu vytvoří kanál a roli, vede živou soupisku s frontou náhradníků a po skončení aktivity po sobě uklidí.</p>
+              <p class="more-tags">Node.js · discord.js</p>
+            </div>
+            <a class="more-link" href="https://github.com/N041M/Fireteam-Finder">GitHub <span aria-hidden="true">↗</span></a>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section" id="experience" aria-labelledby="experience-h">
+      <div class="wrap">
+        <header class="section-head ko">
+          <p class="idx" data-scramble>02</p>
+          <h2 id="experience-h" data-scramble><span lang="en">Experience</span><span lang="cs">Zkušenosti</span></h2>
+        </header>
+
+        <div class="block ko">
+          <h3 class="subhead" data-scramble><span lang="en">Work</span><span lang="cs">Práce</span></h3>
+          <ol class="timeline">
+            <li class="tl-item">
+              <p class="tl-date" data-scramble><span lang="en">Feb – Jul 2025</span><span lang="cs">únor – červenec 2025</span></p>
+              <div>
+                <h4 class="tl-role"><span lang="en">Team lead and front-end developer</span><span lang="cs">Vedoucí týmu a front-end vývojář</span></h4>
+                <p class="tl-org"><span lang="en">Erasmus+ · Amsterdam University of Applied Sciences (HvA)</span><span lang="cs">Erasmus+ · Hogeschool van Amsterdam (HvA)</span></p>
+                <ul class="points" lang="en">
+                  <li>Led an international development team on the VR Classroom project and ran the agile sprints and the GitLab workflow (feature branches, merge requests).</li>
+                  <li>Built the whole project website in Next.js from a Figma design that follows the brand book.</li>
+                  <li>Worked on the media importer and the ASP.NET REST API that uploads content to the virtual whiteboards in the scene.</li>
+                  <li>Implemented VR features in Unity/C#, including multiplayer and interaction systems.</li>
+                </ul>
+                <ul class="points" lang="cs">
+                  <li>Vedl jsem mezinárodní vývojový tým na projektu VR Classroom, řídil agilní sprinty a práci v GitLabu (feature branche, merge requesty).</li>
+                  <li>Vytvořil jsem kompletní web projektu v Next.js, navržený ve Figmě podle brand booku.</li>
+                  <li>Podílel jsem se na importéru médií a na REST API v ASP.NET pro nahrávání obsahu na virtuální tabule ve scéně.</li>
+                  <li>Implementoval jsem funkce pro VR v Unity/C# (multiplayer a interakční systémy).</li>
+                </ul>
+              </div>
+            </li>
+            <li class="tl-item">
+              <p class="tl-date" data-scramble><span>2025 – 2026</span></p>
+              <div>
+                <h4 class="tl-role"><span lang="en">Financial advisor</span><span lang="cs">Finanční poradce</span></h4>
+                <p class="tl-org">Partners Financial Services</p>
+                <ul class="points" lang="en"><li>Advised clients and analysed their needs, with a focus on investment products and capital markets.</li></ul>
+                <ul class="points" lang="cs"><li>Poradenství klientům a analýza jejich potřeb se zaměřením na investiční produkty a kapitálové trhy.</li></ul>
+              </div>
+            </li>
+            <li class="tl-item">
+              <p class="tl-date" data-scramble><span lang="en">2022 – present</span><span lang="cs">2022 – dosud</span></p>
+              <div>
+                <h4 class="tl-role"><span lang="en">Freelance video production</span><span lang="cs">Videoprodukce na volné noze</span></h4>
+                <ul class="points" lang="en"><li>Filmed and helped run the live broadcast of Rally Bohemia, and made and edited video content for Betano.</li></ul>
+                <ul class="points" lang="cs"><li>Natáčel jsem a podílel se na živém přenosu automobilové soutěže Rally Bohemia, tvořil a stříhal videoobsah pro Betano.</li></ul>
+              </div>
+            </li>
+            <li class="tl-item">
+              <p class="tl-date" data-scramble><span>2021, 2022 (2×), 2024</span></p>
+              <div>
+                <h4 class="tl-role"><span lang="en">Head leader, children’s science camp</span><span lang="cs">Hlavní vedoucí, dětský vědecký tábor</span></h4>
+                <ul class="points" lang="en"><li>Prepared week-long programmes and led groups of children on my own across four camp sessions.</li></ul>
+                <ul class="points" lang="cs"><li>Připravoval jsem týdenní programy a samostatně vedl skupiny dětí (4 turnusy).</li></ul>
+              </div>
+            </li>
+          </ol>
+        </div>
+
+        <div class="block ko">
+          <h3 class="subhead" data-scramble><span lang="en">Education</span><span lang="cs">Vzdělání</span></h3>
+          <ol class="timeline">
+            <li class="tl-item">
+              <p class="tl-date" data-scramble><span lang="en">from 2026</span><span lang="cs">od roku 2026</span></p>
+              <div>
+                <h4 class="tl-role"><span lang="en">Master’s degree, Data Science</span><span lang="cs">Navazující magisterské studium, Data Science</span></h4>
+              </div>
+            </li>
+            <li class="tl-item">
+              <p class="tl-date" data-scramble><span>2023 – 2026</span></p>
+              <div>
+                <h4 class="tl-role"><span lang="en">Bc. in Information Management</span><span lang="cs">Bc. Informační management</span></h4>
+                <p class="tl-org"><span lang="en">University of Hradec Králové, Faculty of Informatics and Management</span><span lang="cs">Univerzita Hradec Králové, Fakulta informatiky a managementu</span></p>
+                <ul class="points" lang="en">
+                  <li>Thesis on forecasting the direction of the S&amp;P 500 with recurrent neural networks.</li>
+                  <li>Courses included UML, OWL/RDF/SPARQL, SAP ERPsim, macroeconomics and autonomous systems.</li>
+                </ul>
+                <ul class="points" lang="cs">
+                  <li>Bakalářská práce na téma předpovědi směru indexu S&amp;P 500 pomocí rekurentních neuronových sítí.</li>
+                  <li>Absolvované předměty zahrnovaly UML, OWL/RDF/SPARQL, SAP ERPsim, makroekonomii a autonomní systémy.</li>
+                </ul>
+              </div>
+            </li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="skills" aria-labelledby="skills-h">
+      <div class="wrap">
+        <header class="section-head ko">
+          <p class="idx" data-scramble>03</p>
+          <h2 id="skills-h" data-scramble><span lang="en">Skills</span><span lang="cs">Dovednosti</span></h2>
+        </header>
+        <div class="skills ko">
+          <div class="skill">
+            <h3 data-scramble><span lang="en">Programming</span><span lang="cs">Programování</span></h3>
+            <ul class="tags"><li>Python</li><li>SQL</li><li>JavaScript/TypeScript</li><li>C#</li><li>HTML/CSS</li></ul>
+          </div>
+          <div class="skill">
+            <h3 data-scramble><span lang="en">Machine learning and NLP</span><span lang="cs">Strojové učení a NLP</span></h3>
+            <ul class="tags"><li>PyTorch</li><li>TensorFlow/Keras</li><li>Hugging Face Transformers</li><li>scikit-learn</li><li><span lang="en">LSTM and Transformer architectures</span><span lang="cs">architektury LSTM a Transformer</span></li><li><span lang="en">statistical analysis</span><span lang="cs">statistická analýza</span></li></ul>
+          </div>
+          <div class="skill">
+            <h3 data-scramble><span lang="en">AI agents and tooling</span><span lang="cs">Agentní postupy a nástroje s AI</span></h3>
+            <ul class="tags"><li><span lang="en">Claude Code in daily development</span><span lang="cs">Claude Code při každodenním vývoji</span></li><li><span lang="en">agent and tool architecture</span><span lang="cs">návrh architektury agentů a nástrojů</span></li><li><span lang="en">risk-tiered permissions</span><span lang="cs">oprávnění odstupňovaná podle rizika</span></li><li><span lang="en">model routing</span><span lang="cs">směrování modelů</span></li><li><span lang="en">MCP-style tool integration</span><span lang="cs">integrace nástrojů ve stylu MCP</span></li></ul>
+          </div>
+          <div class="skill">
+            <h3 data-scramble><span lang="en">Software engineering</span><span lang="cs">Softwarové inženýrství</span></h3>
+            <ul class="tags"><li>Git/GitLab</li><li>REST API</li><li><span lang="en">unit testing</span><span lang="cs">jednotkové testování</span></li><li><span lang="en">modular and service-oriented architecture</span><span lang="cs">modulární a servisně orientovaná architektura</span></li><li>CI/CD</li><li><span lang="en">agile</span><span lang="cs">agilní vývoj</span></li></ul>
+          </div>
+          <div class="skill">
+            <h3 data-scramble><span lang="en">Backend, frontend and games</span><span lang="cs">Backend, frontend a vývoj her</span></h3>
+            <ul class="tags"><li>FastAPI</li><li>Node.js</li><li>PostgreSQL/pgvector</li><li>Docker</li><li>Next.js</li><li>Unity/C#</li><li><span lang="en">VR development</span><span lang="cs">vývoj pro VR</span></li></ul>
+          </div>
+          <div class="skill">
+            <h3 data-scramble><span lang="en">Visualisation and modelling</span><span lang="cs">Vizualizace a modelování</span></h3>
+            <ul class="tags"><li>Matplotlib</li><li>Seaborn</li><li>Streamlit</li><li>UML</li><li>BPMN</li><li>Mermaid.js</li><li>Enterprise Architect</li><li>LaTeX (Overleaf)</li><li>MS Excel</li></ul>
+          </div>
+          <div class="skill wide">
+            <h3 data-scramble><span lang="en">Languages</span><span lang="cs">Jazyky</span></h3>
+            <ul class="tags"><li><span lang="en">Czech (native)</span><span lang="cs">čeština (rodilý mluvčí)</span></li><li><span lang="en">English (C2)</span><span lang="cs">angličtina (C2)</span></li><li><span lang="en">German (B1)</span><span lang="cs">němčina (B1)</span></li></ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section contact" id="contact" aria-labelledby="contact-h">
+      <div class="wrap contact-grid">
+        <div class="contact-main ko">
+          <header class="section-head">
+            <p class="idx" data-scramble>04</p>
+            <h2 id="contact-h" data-scramble><span lang="en">Contact</span><span lang="cs">Kontakt</span></h2>
+          </header>
+          <p class="mail-row">
+            <a class="big-mail" href="mailto:ronaldkarelgrant@email.cz">ronaldkarelgrant@email.cz</a>
+            <button type="button" class="copy" data-copy="ronaldkarelgrant@email.cz" data-scramble>
+              <span class="copy-idle"><span lang="en">Copy</span><span lang="cs">Kopírovat</span></span>
+              <span class="copy-done"><span lang="en">Copied</span><span lang="cs">Zkopírováno</span></span>
+            </button>
+          </p>
+          <dl class="contact-list">
+            <div><dt>GitHub</dt><dd><a href="https://github.com/N041M">github.com/N041M</a></dd></div>
+            <div><dt>LinkedIn</dt><dd><a href="https://www.linkedin.com/in/rkgrant">linkedin.com/in/rkgrant</a></dd></div>
+            <div><dt><span lang="en">Based in</span><span lang="cs">Místo</span></dt><dd>Jablonec nad Nisou, CZ</dd></div>
+          </dl>
+        </div>
+        <figure class="fig globe-fig ko">
+          <pre class="plot" data-figure="globe" aria-hidden="true"></pre>
+          <figcaption data-scramble><span lang="en">Fig. 5</span><span lang="cs">Obr. 5</span><span>50.72° N 15.17° E</span></figcaption>
+        </figure>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="wrap">
+      <div class="foot-row ko">
+        <p><span class="copy-sign">©</span> <span data-year>2026</span> Ronald Karel Grant</p>
+        <p><a href="#top"><span lang="en">Back to top</span><span lang="cs">Nahoru</span> <span aria-hidden="true">↑</span></a></p>
+      </div>
+    </div>
+    <div class="shore" data-shore aria-hidden="true"></div>
+  </footer>
+</body>
+</html>
