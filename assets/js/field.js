@@ -153,7 +153,7 @@
     // 2×2 block glyphs, indexed by top-left·8 + top-right·4 + bottom-left·2 + bottom-right.
     quads: " ▗▖▄▝▐▞▟▘▚▌▙▀▜▛█",
   };
-  const EXTRA = "/\\-─═■·^_|.━•¯│┊╷□▪┌┐╭╮╧║╦┬┼▲▼+✦o┃┗┛Ψ▟▙▄█▓@&v◄╪╗~";
+  const EXTRA = "/\\-─═■·^_|.━•¯│┊╷□▪┌┐╭╮╧║╦┬┼▲▼+✦o┃┗┛Ψ▟▙▄█▓░@&v◄╪╗~";
   const GLYPHS = Array.from(new Set(Array.from(Object.values(SETS).join("") + EXTRA)));
   const GI = new Map(GLYPHS.map(function (g, i) { return [g, i]; }));
   const S = {};
@@ -169,14 +169,60 @@
   const G_TRI = G("▲"), G_DOWN = G("▼"), G_PLUS = G("+"), G_SPARK = G("✦"), G_O = G("o");
   const G_HPIPE = G("┃"), G_BLH = G("┗"), G_BRH = G("┛"), G_PSI = G("Ψ"), G_DARK = G("▓");
   const G_ROCK_L = G("▟"), G_ROCK_R = G("▙"), G_ROCK_M = G("█"), G_ROCK_T = G("▄");
-  const G_AT = G("@"), G_AMP = G("&"), G_V = G("v"), G_TILDE = G("~");
+  const G_AT = G("@"), G_AMP = G("&"), G_V = G("v"), G_TILDE = G("~"), G_SNOWFIELD = G("░");
   const PLANE = Array.from("◄═╪═╗", G);
 
   // Atlas rows 0–6 are ink at falling opacity, rows 7–9 the accent, and rows
   // 10–16 the page colour at the same opacities as 0–6, for glyphs drawn on a
-  // dark night sky.
+  // dark night sky. From row 17 come the scene colours. A cell's code is its
+  // glyph index shifted left by 7, or'd with its row.
   const FG_LEVELS = [1, 0.8, 0.6, 0.44, 0.32, 0.22, 0.13];
   const AC_LEVELS = [1, 0.62, 0.34];
+
+  // ---------------------------------------------------------------- colour ---
+  // The drive has its own colours, while the rest of the page stays black,
+  // white and red. Each colour comes at three strengths, in a version for the
+  // light page by day and a brighter one for the dark page and a dark night.
+  const SKY = 0, SUN = 1, DUSK = 2, NIGHT = 3, WINDOW = 4, LEAF = 5, PINE = 6, GRASS = 7;
+  const WHEAT = 8, WATER = 9, SAND = 10, CLAY = 11, ROCK = 12, SNOW = 13, SLATE = 14;
+  const PALETTE = [
+    ["#6f9bc8", "#7fa8d6"], // sky
+    ["#e3931a", "#f4b73c"], // sun
+    ["#d4694e", "#f0957a"], // dusk: a low sun and sunset clouds
+    ["#9c8a4a", "#f1e3a6"], // night: stars and the moon
+    ["#d08f12", "#f6c54e"], // window light, lamps and headlights
+    ["#4d8a3b", "#7cc266"], // leaf
+    ["#2f6a45", "#5ea676"], // pine
+    ["#7f9f33", "#b1cf5f"], // grass
+    ["#c29a33", "#e2c26c"], // wheat and road markings
+    ["#3a78b8", "#6ea8e2"], // water
+    ["#bf9552", "#dcb982"], // sand
+    ["#b4502d", "#e27a52"], // clay: mesas, the bridge, roofs and hulls
+    ["#7b6b5b", "#ad9d8d"], // rock and bark
+    ["#8da6bf", "#eaf1f8"], // snow
+    ["#7f8ca2", "#9aa6bb"], // slate: distant hills and buildings
+  ];
+  const COLOUR_LEVELS = [1, 0.7, 0.42];
+  const COLOUR_BASE = 17;
+  const COLOUR_ROWS = PALETTE.length * 3;
+  function cr(colour, level) {
+    return COLOUR_BASE + colour * 3 + level;
+  }
+
+  // Sky colours at the top of the sky, at the horizon, and for the ground and
+  // water, by day, at dusk and at night, for each page theme.
+  const SKY_KEYS = {
+    light: {
+      day: ["#cfe0ee", "#f3efe5", "#e9ebe6"],
+      dusk: ["#766b98", "#f0a068", "#cfb9ab"],
+      night: ["#0c1226", "#1e284a", "#0b1020"],
+    },
+    dark: {
+      day: ["#1c2b3e", "#2c3947", "#171b21"],
+      dusk: ["#241f3b", "#5c3125", "#1a1618"],
+      night: ["#090d1a", "#131b31", "#0a0d16"],
+    },
+  };
 
   function pick(set, h) {
     return set[(h * set.length) | 0];
@@ -218,15 +264,15 @@
   let cols = 0, rows = 0, N = 0;
   let atlas = null;
   let colors = { bg: "#fbfaf8", fg: "#17181b", accent: "#c8352b" };
-  let bgRGB = [251, 250, 248], fgRGB = [23, 24, 27], acRGB = [200, 53, 43];
+  let bgRGB = [251, 250, 248];
   let darkPage = false;
   let mask, E, RA;
   // Per column: terrain height, terrain biome, and the biome of the front
   // layer, the middle layer and the road and water.
   let HF, HB, NBI, MBI, BB;
-  // Per row: how far the scene's background is from the page colour, whether
-  // glyphs there are drawn in the page colour, and the row's fill.
-  let tone, rowInv, rowFill = [];
+  let tone, rowInv, rowAlt, rowFill = [];
+  // Per row: tone is 1 on rows dark enough for light glyphs, rowInv flips
+  // ink to the page colour there, and rowAlt picks the brighter scene colours.
   // What each cell showed last frame, and each row's fill, so a frame only
   // redraws what changed. -9 marks a cell something was drawn over.
   let prevCode, prevFill = [];
@@ -250,7 +296,8 @@
   const dust = [];
   let lastDust = 0;
   const L = { H: 0, cloudBase: 0, cityH: 0, farCityH: 0, roadTop: 0, waterTop: 0, groundEnd: 0 };
-  const env = { day: 1, night: 0, dusk: 0, sunX: 0, sunY: 0, sunR: 0, moonX: 0, moonY: 0, moonR: 0 };
+  const env = { day: 1, night: 0, dusk: 0, wDay: 1, wDusk: 0, wNight: 0, sunX: 0, sunY: 0, sunR: 0, moonX: 0, moonY: 0, moonR: 0 };
+  const skyTop = [0, 0, 0], skyHorizon = [0, 0, 0], skyGround = [0, 0, 0];
   const car = { x: 0, y: 0, w: 0, h: 0, p: 4, hopT: -10, visible: false };
 
   function rgbOf(str, fallback) {
@@ -258,6 +305,14 @@
     if (!m) return fallback;
     const n = parseInt(m[1], 16);
     return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+
+  const SKY_RGB = {};
+  for (const theme in SKY_KEYS) {
+    SKY_RGB[theme] = {};
+    for (const phase in SKY_KEYS[theme]) {
+      SKY_RGB[theme][phase] = SKY_KEYS[theme][phase].map(function (hex) { return rgbOf(hex, [0, 0, 0]); });
+    }
   }
 
   function readColors() {
@@ -268,41 +323,29 @@
       accent: cs.getPropertyValue("--accent").trim() || colors.accent,
     };
     bgRGB = rgbOf(colors.bg, bgRGB);
-    fgRGB = rgbOf(colors.fg, fgRGB);
-    acRGB = rgbOf(colors.accent, acRGB);
     darkPage = bgRGB[0] + bgRGB[1] + bgRGB[2] < 384;
-  }
-
-  // The page colour moved T of the way towards the ink, then `glow` of the way
-  // towards the accent.
-  function tint(T, glow) {
-    const out = [0, 0, 0];
-    for (let i = 0; i < 3; i++) {
-      out[i] = Math.round((bgRGB[i] + (fgRGB[i] - bgRGB[i]) * T) * (1 - glow) + acRGB[i] * glow);
-    }
-    return "rgb(" + out[0] + "," + out[1] + "," + out[2] + ")";
   }
 
   function buildAtlas() {
     atlas = document.createElement("canvas");
     atlas.width = GLYPHS.length * cwD;
-    atlas.height = 17 * chD;
+    atlas.height = (COLOUR_BASE + 2 * COLOUR_ROWS) * chD;
     const a = atlas.getContext("2d");
     a.font = fontPx * dpr + 'px "Departure Mono", ui-monospace, Menlo, monospace';
     a.textBaseline = "alphabetic";
     const baseline = Math.round(fontPx * dpr);
-    for (let row = 0; row < 17; row++) {
-      if (row < 7) {
-        a.fillStyle = colors.fg;
-        a.globalAlpha = FG_LEVELS[row];
-      } else if (row < 10) {
-        a.fillStyle = colors.accent;
-        a.globalAlpha = AC_LEVELS[row - 7];
-      } else {
-        a.fillStyle = colors.bg;
-        a.globalAlpha = FG_LEVELS[row - 10];
-      }
+    const paint = function (row, style, alpha) {
+      a.fillStyle = style;
+      a.globalAlpha = alpha;
       for (let i = 0; i < GLYPHS.length; i++) a.fillText(GLYPHS[i], i * cwD, row * chD + baseline);
+    };
+    for (let row = 0; row < 7; row++) paint(row, colors.fg, FG_LEVELS[row]);
+    for (let row = 0; row < 3; row++) paint(7 + row, colors.accent, AC_LEVELS[row]);
+    for (let row = 0; row < 7; row++) paint(10 + row, colors.bg, FG_LEVELS[row]);
+    for (let v = 0; v < 2; v++) {
+      for (let i = 0; i < PALETTE.length; i++) {
+        for (let l = 0; l < 3; l++) paint(COLOUR_BASE + v * COLOUR_ROWS + i * 3 + l, PALETTE[i][v], COLOUR_LEVELS[l]);
+      }
     }
   }
 
@@ -359,6 +402,7 @@
     BB = new Uint8Array(cols);
     tone = new Float32Array(rows);
     rowInv = new Uint8Array(rows);
+    rowAlt = new Uint8Array(rows);
     rowFill = new Array(rows).fill(null);
     prevCode = new Int32Array(N);
     prevFill = new Array(rows).fill(null);
@@ -404,6 +448,13 @@
     env.day = smooth(5, 7, h) * (1 - smooth(18, 20, h));
     env.night = 1 - env.day;
     env.dusk = 4 * env.day * env.night;
+    // The sky colours move in steps of ten minutes of the day (about a second),
+    // so a frame without scrolling only redraws the rows when they change.
+    const hq = Math.round(h * 6) / 6;
+    const dq = smooth(5, 7, hq) * (1 - smooth(18, 20, hq));
+    env.wDusk = 4 * dq * (1 - dq);
+    env.wDay = dq * (1 - env.wDusk);
+    env.wNight = (1 - dq) * (1 - env.wDusk);
     const scale = Math.min(1.2, Math.max(0.7, vw / 1200));
     const horizon = L.roadTop - ch * 2;
     // The sun is up from 5:00 to 20:00 and the moon from 19:30 to 5:30.
@@ -421,30 +472,50 @@
     } else env.moonR = 0;
   }
 
-  // On the light page the night darkens the scene, and glyphs there switch to
-  // the page colour. On the dark page the day lightens the sky a little. Dusk
-  // and dawn add an accent glow near the horizon on both.
+  // The day, dusk and night colours for one part of the sky, weighted by the
+  // time of day.
+  function mixSky(K, i, out) {
+    for (let j = 0; j < 3; j++) out[j] = K.day[i][j] * env.wDay + K.dusk[i][j] * env.wDusk + K.night[i][j] * env.wNight;
+  }
+
+  // Each row of the scene gets its sky colour: a blend from the top of the sky
+  // to the horizon, then the ground and water below the road. It fades back to
+  // the page colour at the bottom of the scene and as the page scrolls. Rows
+  // dark enough to need light glyphs are marked.
   function computeTone(fade, rowOff) {
+    const K = darkPage ? SKY_RGB.dark : SKY_RGB.light;
+    mixSky(K, 0, skyTop);
+    mixSky(K, 1, skyHorizon);
+    mixSky(K, 2, skyGround);
     for (let r = 0; r < rows; r++) {
       const sy = (r + rowOff + 0.5) * ch;
-      let T = 0, glow = 0;
-      if (fade > 0 && sy < L.groundEnd) {
-        const f = smooth(L.cloudBase * 0.2, L.roadTop, sy);
-        const sky = sy < L.roadTop;
-        if (!darkPage) {
-          const n = Math.pow(env.night, 1.3);
-          T = sky ? n * (0.94 - f * (0.08 + 0.5 * (1 - env.night))) : n * 0.88;
-        } else {
-          T = sky ? env.day * (0.07 + 0.08 * f) + env.dusk * 0.1 * f : env.day * 0.04;
-        }
-        if (sky) glow = env.dusk * 0.2 * f * f;
-        const k = fade * (1 - smooth(L.H * 0.98, L.groundEnd, sy));
-        T *= k;
-        glow *= k;
+      const k = fade > 0 && sy < L.groundEnd ? fade * (1 - smooth(L.H * 0.98, L.groundEnd, sy)) : 0;
+      if (k <= 0.004) {
+        rowFill[r] = null;
+        rowInv[r] = 0;
+        rowAlt[r] = darkPage ? 1 : 0;
+        tone[r] = 0;
+        continue;
       }
-      tone[r] = T;
-      rowInv[r] = T > 0.5 ? 1 : 0;
-      rowFill[r] = T > 0.004 || glow > 0.004 ? tint(T, glow) : null;
+      let c0, c1, c2;
+      if (sy < L.roadTop) {
+        const f = smooth(L.cloudBase * 0.2, L.roadTop, sy);
+        c0 = skyTop[0] + (skyHorizon[0] - skyTop[0]) * f;
+        c1 = skyTop[1] + (skyHorizon[1] - skyTop[1]) * f;
+        c2 = skyTop[2] + (skyHorizon[2] - skyTop[2]) * f;
+      } else {
+        c0 = skyGround[0];
+        c1 = skyGround[1];
+        c2 = skyGround[2];
+      }
+      c0 = Math.round(bgRGB[0] + (c0 - bgRGB[0]) * k);
+      c1 = Math.round(bgRGB[1] + (c1 - bgRGB[1]) * k);
+      c2 = Math.round(bgRGB[2] + (c2 - bgRGB[2]) * k);
+      const dark = (0.2126 * c0 + 0.7152 * c1 + 0.0722 * c2) / 255 < 0.38;
+      rowFill[r] = "rgb(" + c0 + "," + c1 + "," + c2 + ")";
+      rowInv[r] = !darkPage && dark ? 1 : 0;
+      rowAlt[r] = darkPage || dark ? 1 : 0;
+      tone[r] = dark ? 1 : 0;
     }
   }
 
@@ -557,30 +628,33 @@
   let zzKey = -1, zzVal = 0;
 
   function skyCell(c, sr, x, sy, t) {
-    // Clouds only form in the upper part of the sky.
+    // Clouds only form in the upper part of the sky. At dusk they take on the
+    // colour of the sunset.
     if (sy < L.cloudBase * 1.3) {
       const hv = hash3(c, sr, Math.floor(t * 0.4 + hash2(c, sr + 5000) * 8));
       const cx = (x + t * 4) / 230, cy = sy / 115;
       const d = noise3(cx, cy, t * 0.018) * 0.62 + noise3(cx * 2.3, cy * 2.3, t * 0.03 + 5.1) * 0.38;
       const v = d - (0.1 + 0.1 * env.night + 0.6 * smooth(L.cloudBase * 0.35, L.cloudBase * 1.25, sy));
-      if (v > 0.26) return hv < 0.07 ? (pick(S.digits, hv * 14) << 4) | 1 : pick(S.cloudDense, hv) << 4;
-      if (v > 0.13) return hv < 0.1 ? (pick(S.digits, hv * 10) << 4) | 1 : (pick(S.cloudMid, hv) << 4) | 1;
-      if (v > 0.03) return (pick(S.cloudEdge, hv) << 4) | 3;
+      const pink = env.dusk > 0.4;
+      if (v > 0.26) return hv < 0.07 ? (pick(S.digits, hv * 14) << 7) | 1 : (pick(S.cloudDense, hv) << 7) | (pink ? cr(DUSK, 0) : 0);
+      if (v > 0.13) return hv < 0.1 ? (pick(S.digits, hv * 10) << 7) | 1 : (pick(S.cloudMid, hv) << 7) | (pink ? cr(DUSK, 1) : 1);
+      if (v > 0.03) return (pick(S.cloudEdge, hv) << 7) | (pink ? cr(DUSK, 2) : 3);
     }
     if (env.sunR > 0 && Math.abs(x - env.sunX) < env.sunR + cw && Math.abs(sy - env.sunY) < env.sunR + ch) {
-      const bits = discBits(x, sy, env.sunX, env.sunY, env.sunR, env.dusk > 0.35);
-      if (bits) return (S.quads[bits] << 4) | (env.dusk > 0.35 ? 7 : 8);
+      const low = env.dusk > 0.35;
+      const bits = discBits(x, sy, env.sunX, env.sunY, env.sunR, low);
+      if (bits) return (S.quads[bits] << 7) | (low ? cr(DUSK, 0) : cr(SUN, 0));
     }
     if (env.moonR > 0 && Math.abs(x - env.moonX) < env.moonR + cw && Math.abs(sy - env.moonY) < env.moonR + ch) {
       let bits = discBits(x, sy, env.moonX, env.moonY, env.moonR, false);
       if (bits) bits &= ~discBits(x, sy, env.moonX + env.moonR * 0.5, env.moonY - env.moonR * 0.15, env.moonR * 0.85, false);
-      if (bits) return S.quads[bits] << 4;
+      if (bits) return (S.quads[bits] << 7) | cr(NIGHT, 0);
     }
     if (env.night > 0.3) {
       const hs = hash2(c * 7 + 3, sr * 13 + 1);
       if (hs < 0.022 * env.night) {
         const tw = hash3(c, sr, Math.floor(t * 1.7 + hs * 90));
-        return tw < 0.72 ? (G_DOT << 4) | 2 : tw < 0.92 ? (G_PLUS << 4) | 1 : G_SPARK << 4;
+        return tw < 0.72 ? (G_DOT << 7) | cr(NIGHT, 2) : tw < 0.92 ? (G_PLUS << 7) | cr(NIGHT, 1) : (G_SPARK << 7) | cr(NIGHT, 0);
       }
     }
     if (sy < L.roadTop) {
@@ -589,11 +663,11 @@
         zzKey = key;
         zzVal = noise3(((c | 1) * cw) / 320 + t * 0.012, sy / 150, 9.1);
       }
-      if (zzVal > 0.32) return ((c & 1 ? G_BACK : G_SLASH) << 4) | (zzVal > 0.5 ? 4 : 5);
+      if (zzVal > 0.32) return ((c & 1 ? G_BACK : G_SLASH) << 7) | cr(SKY, zzVal > 0.5 ? 1 : 2);
     }
     const hs = hash2(Math.floor((x + t * 9) / cw), sr + 400);
-    if (hs < 0.01) return ((hs < 0.006 ? G_DASH : G_DOT) << 4) | 4;
-    return c % GRID === 0 ? (G_GRID << 4) | 6 : -1;
+    if (hs < 0.01) return ((hs < 0.006 ? G_DASH : G_DOT) << 7) | 4;
+    return c % GRID === 0 ? (G_GRID << 7) | 6 : -1;
   }
 
   // -------------------------------------------------------------- terrain ---
@@ -613,46 +687,46 @@
     else if (hl > h && hr > h) eg = G_CARET;
     switch (HB[c]) {
       case MOUNTAINS: {
-        if (edge) return (eg << 4) | 1;
+        if (edge) return (eg << 7) | cr(ROCK, 0);
         // High peaks keep snow on top.
         const peak = (L.roadTop - h) / (L.H * 0.56);
-        if (peak > 0.5 && depth < 1.5 + peak * 5) return hv < 0.05 ? (G_DOT << 4) | 4 : -1;
+        if (peak > 0.5 && depth < 1.5 + peak * 5) return (G_SNOWFIELD << 7) | cr(SNOW, 1);
         const fade = 1 - smooth(4, 18, depth);
         if (slope > 0.05) {
-          if (mod(wc - sr, 3) === 0 && hv < 0.85 * fade + 0.1) return (G_BACK << 4) | 2;
-          if (hv < 0.35 * fade) return (pick(S.rock, hash2(wc, sr)) << 4) | 2;
-        } else if (mod(wc + sr, 4) === 0 && hv < 0.6 * fade) return (G_SLASH << 4) | 3;
-        return hv < 0.05 ? (pick(S.base, hash2(sr, wc)) << 4) | 4 : -1;
+          if (mod(wc - sr, 3) === 0 && hv < 0.85 * fade + 0.1) return (G_BACK << 7) | cr(ROCK, 1);
+          if (hv < 0.35 * fade) return (pick(S.rock, hash2(wc, sr)) << 7) | cr(ROCK, 1);
+        } else if (mod(wc + sr, 4) === 0 && hv < 0.6 * fade) return (G_SLASH << 7) | cr(ROCK, 2);
+        return hv < 0.05 ? (pick(S.base, hash2(sr, wc)) << 7) | cr(ROCK, 2) : -1;
       }
       case FOREST: {
-        if (edge) return (G_TRI << 4) | 2;
+        if (edge) return (G_TRI << 7) | cr(PINE, 0);
         if (mod(wc + (sr & 1) * 2, 3) === 0 && hv < 0.9 - depth * 0.05) {
-          return (pick(S.pineTop, hv) << 4) | (depth < 4 ? 3 : 4);
+          return (pick(S.pineTop, hv) << 7) | cr(PINE, depth < 4 ? 1 : 2);
         }
         return -1;
       }
       case COUNTRY: {
-        // Rolling hills in a patchwork of fields with hedges between them.
-        if (edge) return ((Math.abs(slope) < 0.3 ? G_US : eg) << 4) | 3;
-        if (mod(wc, 10) === 0) return (G_DOT << 4) | 5;
+        // Rolling hills in a patchwork of grass and wheat with hedges between.
+        if (edge) return ((Math.abs(slope) < 0.3 ? G_US : eg) << 7) | cr(GRASS, 0);
+        if (mod(wc, 10) === 0) return (G_DOT << 7) | cr(PINE, 1);
         const style = hash2(Math.floor(wc / 10) * 31 + Math.floor(depth / 2.5), 3);
         if (style < 0.25) return -1;
-        if ((sr & 1) === 0) return (pick(S.field, style) << 4) | 4;
-        return style > 0.6 && hv < 0.5 ? (G_DOT << 4) | 5 : -1;
+        if ((sr & 1) === 0) return (pick(S.field, style) << 7) | cr(style < 0.6 ? GRASS : WHEAT, 0);
+        return style > 0.6 && hv < 0.5 ? (G_DOT << 7) | cr(WHEAT, 2) : -1;
       }
       case DESERT: {
-        if (edge) return ((Math.abs(slope) < 0.3 ? G_TILDE : eg) << 4) | 3;
-        if (mod(sr + Math.floor(wc / 5), 3) === 0 && hv < 0.45) return (G_TILDE << 4) | 5;
-        return hv < 0.04 ? (G_DOT << 4) | 5 : -1;
+        if (edge) return ((Math.abs(slope) < 0.3 ? G_TILDE : eg) << 7) | cr(SAND, 0);
+        if (mod(sr + Math.floor(wc / 5), 3) === 0 && hv < 0.45) return (G_TILDE << 7) | cr(SAND, 1);
+        return hv < 0.04 ? (G_DOT << 7) | cr(SAND, 1) : -1;
       }
       default: {
-        // Low hills behind the city and across the bay.
-        if (edge) return (eg << 4) | 3;
+        // Low hills behind the city and across the bay, blue with distance.
+        if (edge) return (eg << 7) | cr(SLATE, 1);
         const fade = 1 - smooth(3, 10, depth);
         if (slope > 0.05) {
-          if (mod(wc - sr, 3) === 0 && hv < 0.7 * fade + 0.1) return (G_BACK << 4) | 4;
-        } else if (mod(wc + sr, 4) === 0 && hv < 0.4 * fade) return (G_SLASH << 4) | 5;
-        return hv < 0.04 ? (pick(S.base, hash2(sr, wc)) << 4) | 5 : -1;
+          if (mod(wc - sr, 3) === 0 && hv < 0.7 * fade + 0.1) return (G_BACK << 7) | cr(SLATE, 2);
+        } else if (mod(wc + sr, 4) === 0 && hv < 0.4 * fade) return (G_SLASH << 7) | cr(SLATE, 2);
+        return hv < 0.04 ? (pick(S.base, hash2(sr, wc)) << 7) | cr(SLATE, 2) : -1;
       }
     }
   }
@@ -667,8 +741,8 @@
   function windowCode(id, lx, ly, t) {
     const hw = hash2(id * 64 + lx, ly + 300);
     const on = hash3(id * 64 + lx, ly, Math.floor(t / 7 + hw * 7)) < 0.3 + 0.4 * env.night;
-    if (!on) return (G_OPEN << 4) | 3;
-    return hw < 0.035 ? (G_SMALL << 4) | 7 : (G_SMALL << 4) | 1;
+    if (!on) return (G_OPEN << 7) | 3;
+    return hw < 0.035 ? (G_SMALL << 7) | 7 : (G_SMALL << 7) | cr(WINDOW, 0);
   }
 
   function building(wc, ly, t) {
@@ -683,8 +757,8 @@
       // Some roofs carry an antenna with a blinking warning light.
       const ant = ha < 0.35 ? 2 + (((ha * 30) | 0) % 3) : 0;
       if (!ant || lx !== w >> 1 || ly >= floors + ant) return NOT_HERE;
-      if (ly < floors + ant - 1) return (G_PIPE << 4) | 1;
-      return Math.floor(t / 0.8 + ha * 5) % 2 ? (G_BULLET << 4) | 7 : (G_TICK << 4) | 2;
+      if (ly < floors + ant - 1) return (G_PIPE << 7) | 1;
+      return Math.floor(t / 0.8 + ha * 5) % 2 ? (G_BULLET << 7) | 7 : (G_TICK << 7) | 2;
     }
     let left = 0, right = w - 1;
     // Stepped towers are two cells narrower on each side above the shoulder.
@@ -692,7 +766,7 @@
       const shoulder = Math.floor(floors * 0.7);
       const outside = lx < 2 || lx > w - 3;
       if (ly > shoulder && outside) return NOT_HERE;
-      if (ly === shoulder && outside) return ((lx === 0 ? G_TL : lx === w - 1 ? G_TR : G_H) << 4) | 1;
+      if (ly === shoulder && outside) return ((lx === 0 ? G_TL : lx === w - 1 ? G_TR : G_H) << 7) | 1;
       if (ly > shoulder) {
         left = 2;
         right = w - 3;
@@ -701,16 +775,16 @@
     if (ly === floors - 1) {
       const round = style === 4;
       const g = lx === left ? (round ? G_RTL : G_TL) : lx === right ? (round ? G_RTR : G_TR) : G_H;
-      return (g << 4) | 1;
+      return (g << 7) | 1;
     }
-    if (lx === left || lx === right) return (G_PIPE << 4) | 1;
+    if (lx === left || lx === right) return (G_PIPE << 7) | 1;
     const ix = lx - left;
     if (style === 1) {
-      if (ly % 3 === 0) return (G_HH << 4) | 2;
+      if (ly % 3 === 0) return (G_HH << 7) | 2;
       return ix % 2 === 1 ? windowCode(lot, lx, ly, t) : -1;
     }
     if (style === 2) {
-      if (ix % 3 === 0) return (G_PIPE << 4) | 3;
+      if (ix % 3 === 0) return (G_PIPE << 7) | 3;
       return ly % 2 === 1 ? windowCode(lot, lx, ly, t) : -1;
     }
     return ix % 2 === 1 && ly % 2 === 1 ? windowCode(lot, lx, ly, t) : -1;
@@ -723,24 +797,24 @@
     if (lx < 0 || lx >= w) return NOT_HERE;
     const floors = Math.max(3, Math.round((L.farCityH * (0.3 + 0.7 * Math.pow(hash2(lot, 23), 1.2))) / ch));
     if (ly >= floors) return NOT_HERE;
-    if (ly === floors - 1) return (G_H << 4) | 2;
-    if (lx === 0 || lx === w - 1) return (G_PIPE << 4) | 3;
+    if (ly === floors - 1) return (G_H << 7) | cr(SLATE, 0);
+    if (lx === 0 || lx === w - 1) return (G_PIPE << 7) | cr(SLATE, 1);
     if (lx % 2 === 1 && ly % 2 === 0) {
       const on = hash3(lot * 16 + lx, ly, Math.floor(t / 9 + hash2(lot, ly) * 9)) < 0.25 + 0.4 * env.night;
-      return on ? (G_SMALL << 4) | 2 : (G_DOT << 4) | 4;
+      return on ? (G_SMALL << 7) | cr(WINDOW, 1) : (G_DOT << 7) | cr(SLATE, 2);
     }
     // Distant buildings are hatched so they read as a mass behind the front row.
-    return mod(wc + ly, 3) === 0 ? (G_SLASH << 4) | 5 : -1;
+    return mod(wc + ly, 3) === 0 ? (G_SLASH << 7) | cr(SLATE, 2) : -1;
   }
 
   // Street lamps along the promenade, lit at night, in front of the buildings.
   function cityNear(wc, ly, t) {
     const p = mod(wc, 23);
     if (ly <= 4 && p >= 7 && p <= 10) {
-      if (p === 7) return ((ly === 4 ? G_TL : G_PIPE) << 4) | 1;
-      if (p === 8 && ly === 4) return (G_H << 4) | 1;
-      if (p === 9 && ly === 4) return env.night > 0.4 ? (G_SQ << 4) | 7 : (G_DOWN << 4) | 1;
-      if (env.night > 0.4 && ly >= 2 && ly <= 3 && hash3(wc, ly, Math.floor(t * 4)) < 0.5) return (G_DOT << 4) | 8;
+      if (p === 7) return ((ly === 4 ? G_TL : G_PIPE) << 7) | 1;
+      if (p === 8 && ly === 4) return (G_H << 7) | 1;
+      if (p === 9 && ly === 4) return env.night > 0.4 ? (G_SQ << 7) | cr(WINDOW, 0) : (G_DOWN << 7) | 1;
+      if (env.night > 0.4 && ly >= 2 && ly <= 3 && hash3(wc, ly, Math.floor(t * 4)) < 0.5) return (G_DOT << 7) | cr(WINDOW, 1);
     }
     return building(wc, ly, t);
   }
@@ -754,19 +828,19 @@
     const lx = mod(wc, SPAN);
     if (lx < LEGS) {
       if (ly > th) return NOT_HERE;
-      if (lx === 0 || lx === LEGS - 1) return ((ly === th ? G_DTEE : G_DPIPE) << 4) | 1;
-      if (ly === th || ly === Math.round(th * 0.62) || ly === Math.round(th * 0.3)) return (G_HH << 4) | 1;
+      if (lx === 0 || lx === LEGS - 1) return ((ly === th ? G_DTEE : G_DPIPE) << 7) | cr(CLAY, 0);
+      if (ly === th || ly === Math.round(th * 0.62) || ly === Math.round(th * 0.3)) return (G_HH << 7) | cr(CLAY, 0);
       return NOT_HERE;
     }
-    if (ly === 0) return ((lx % 3 === 0 ? G_TEE : G_H) << 4) | 2;
+    if (ly === 0) return ((lx % 3 === 0 ? G_TEE : G_H) << 7) | 2;
     const span = SPAN - LEGS;
     const s0 = (lx - LEGS) / span, s1 = (lx - LEGS + 1) / span;
     const sag = th * 0.85;
     const h0 = Math.round(th - sag * 4 * s0 * (1 - s0));
     const h1 = Math.round(th - sag * 4 * s1 * (1 - s1));
     const lo = Math.min(h0, h1), hi = Math.max(h0, h1);
-    if (ly >= lo && ly <= hi) return ((h0 === h1 ? G_H : h1 < h0 ? G_BACK : G_SLASH) << 4) | 1;
-    if (lx % 3 === 1 && ly < lo) return (G_PIPE << 4) | 3;
+    if (ly >= lo && ly <= hi) return ((h0 === h1 ? G_H : h1 < h0 ? G_BACK : G_SLASH) << 7) | cr(CLAY, 0);
+    if (lx % 3 === 1 && ly < lo) return (G_PIPE << 7) | cr(CLAY, 2);
     return NOT_HERE;
   }
 
@@ -780,14 +854,15 @@
     const cx = hwMax + 1 + ((hash2(lot, salt + 1) * 3) | 0);
     const hgt = hmin + ((hash2(lot, salt + 2) * (hmax - hmin + 1)) | 0);
     const dx = wc - lot * lotW - cx;
-    if (ly === 0) return dx === 0 ? (G_PIPE << 4) | lvl : NOT_HERE;
+    const shade = Math.min(2, lvl - 1);
+    if (ly === 0) return dx === 0 ? (G_PIPE << 7) | cr(ROCK, shade) : NOT_HERE;
     if (ly > hgt) return NOT_HERE;
     const hw = Math.floor((hgt - ly) * 0.55);
     if (dx < -hw || dx > hw) return NOT_HERE;
-    if (hw === 0) return (G_TRI << 4) | lvl;
-    if (dx === -hw) return (G_SLASH << 4) | lvl;
-    if (dx === hw) return (G_BACK << 4) | lvl;
-    return (ly + dx) & 1 ? (G_CARET << 4) | Math.min(6, lvl + 1) : -1;
+    if (hw === 0) return (G_TRI << 7) | cr(PINE, shade);
+    if (dx === -hw) return (G_SLASH << 7) | cr(PINE, shade);
+    if (dx === hw) return (G_BACK << 7) | cr(PINE, shade);
+    return (ly + dx) & 1 ? (G_CARET << 7) | cr(PINE, Math.min(2, lvl)) : -1;
   }
 
   // Farmland: round trees, the odd barn, and a fence along the road.
@@ -802,22 +877,23 @@
       const trunk = 1 + ((hash2(lot, 65) * 2) | 0);
       const dx = (lx - cx) / rx, dy = (ly + 0.5 - trunk - ry) / ry;
       const d = dx * dx + dy * dy;
-      if (d < 1) return (pick(S.canopy, hash2(wc, ly + lot)) << 4) | (d > 0.6 ? 2 : 1);
-      if (lx === cx && ly <= trunk) return (G_PIPE << 4) | 1;
+      if (d < 1) return (pick(S.canopy, hash2(wc, ly + lot)) << 7) | cr(LEAF, d > 0.6 ? 1 : 0);
+      if (lx === cx && ly <= trunk) return (G_PIPE << 7) | cr(ROCK, 0);
     } else if (h < 0.66 && lx >= 2 && lx <= 10) {
+      // A barn with a red roof.
       if (ly <= 2) {
-        if (lx === 2 || lx === 10) return (G_PIPE << 4) | 1;
-        if (lx === 6 && ly <= 1) return (G_DARK << 4) | 1;
-        if ((lx === 4 || lx === 8) && ly === 1) return (G_SMALL << 4) | 1;
+        if (lx === 2 || lx === 10) return (G_PIPE << 7) | 1;
+        if (lx === 6 && ly <= 1) return (G_DARK << 7) | cr(CLAY, 1);
+        if ((lx === 4 || lx === 8) && ly === 1) return (G_SMALL << 7) | cr(WINDOW, 1);
         if (ly > 0) return -1;
       } else if (ly <= 6) {
         const k = ly - 3;
-        if (lx === 2 + k) return ((2 + k >= 10 - k ? G_CARET : G_SLASH) << 4) | 1;
-        if (lx === 10 - k) return (G_BACK << 4) | 1;
-        if (lx > 2 + k && lx < 10 - k) return (lx + ly) % 2 ? (G_SLASH << 4) | 4 : -1;
+        if (lx === 2 + k) return ((2 + k >= 10 - k ? G_CARET : G_SLASH) << 7) | cr(CLAY, 0);
+        if (lx === 10 - k) return (G_BACK << 7) | cr(CLAY, 0);
+        if (lx > 2 + k && lx < 10 - k) return (lx + ly) % 2 ? (G_SLASH << 7) | cr(CLAY, 2) : -1;
       }
     }
-    if (ly === 0) return ((mod(wc, 4) === 0 ? G_CROSS : G_H) << 4) | 3;
+    if (ly === 0) return ((mod(wc, 4) === 0 ? G_CROSS : G_H) << 7) | cr(ROCK, 1);
     return NOT_HERE;
   }
 
@@ -828,21 +904,22 @@
     const h = hash2(lot, 91);
     const cx = 4 + ((hash2(lot, 92) * 8) | 0);
     const dx = lx - cx;
+    const green = cr(LEAF, 1);
     if (h < 0.4) {
       const hgt = 4 + ((hash2(lot, 93) * 4) | 0);
       const a1 = 1 + ((hash2(lot, 94) * 2) | 0), a2 = a1 + 1;
-      if (dx === 0 && ly <= hgt) return (G_HPIPE << 4) | 1;
-      if (dx === -1 && ly === a1) return (G_HEAVY << 4) | 1;
-      if (dx === -2 && ly === a1) return (G_BLH << 4) | 1;
-      if (dx === -2 && ly > a1 && ly <= a1 + 2) return (G_HPIPE << 4) | 1;
-      if (dx === 1 && ly === a2) return (G_HEAVY << 4) | 1;
-      if (dx === 2 && ly === a2) return (G_BRH << 4) | 1;
-      if (dx === 2 && ly > a2 && ly <= a2 + 2) return (G_HPIPE << 4) | 1;
+      if (dx === 0 && ly <= hgt) return (G_HPIPE << 7) | green;
+      if (dx === -1 && ly === a1) return (G_HEAVY << 7) | green;
+      if (dx === -2 && ly === a1) return (G_BLH << 7) | green;
+      if (dx === -2 && ly > a1 && ly <= a1 + 2) return (G_HPIPE << 7) | green;
+      if (dx === 1 && ly === a2) return (G_HEAVY << 7) | green;
+      if (dx === 2 && ly === a2) return (G_BRH << 7) | green;
+      if (dx === 2 && ly > a2 && ly <= a2 + 2) return (G_HPIPE << 7) | green;
     } else if (h < 0.55) {
-      if (dx === 0 && ly === 0) return (G_PSI << 4) | 1;
+      if (dx === 0 && ly === 0) return (G_PSI << 7) | green;
     } else if (h < 0.68) {
-      if (ly === 0 && dx >= 0 && dx <= 2) return ((dx === 0 ? G_ROCK_L : dx === 2 ? G_ROCK_R : G_ROCK_M) << 4) | 2;
-      if (ly === 1 && dx === 1) return (G_ROCK_T << 4) | 2;
+      if (ly === 0 && dx >= 0 && dx <= 2) return ((dx === 0 ? G_ROCK_L : dx === 2 ? G_ROCK_R : G_ROCK_M) << 7) | cr(ROCK, 1);
+      if (ly === 1 && dx === 1) return (G_ROCK_T << 7) | cr(ROCK, 1);
     }
     return NOT_HERE;
   }
@@ -853,7 +930,7 @@
     if (p !== NOT_HERE) return p;
     p = pine(wc + 9, ly, 85, 0.8, 5, 10, 2);
     if (p !== NOT_HERE) return p;
-    if (ly >= 2 && ly <= 6 && hash3(wc >> 1, ly, Math.floor(t * 0.7)) < 0.12) return (G_DASH << 4) | 5;
+    if (ly >= 2 && ly <= 6 && hash3(wc >> 1, ly, Math.floor(t * 0.7)) < 0.12) return (G_DASH << 7) | 5;
     return NOT_HERE;
   }
 
@@ -876,19 +953,20 @@
   const TRAIN_CAR = 11;
   function railCell(x, ly, t) {
     if (ly < 3 || ly > 5) return NOT_HERE;
-    const rail = (G_H << 4) | 3;
+    const rail = (G_H << 7) | 3;
     const k = Math.floor(t / 24);
     const head = vw + 60 - (t - k * 24) * 170;
     const dx = x - head;
     if (hash2(k, 7) > 0.8 || dx < 0 || dx >= 7 * TRAIN_CAR * cw) return ly === 3 ? rail : NOT_HERE;
     const car = Math.floor(dx / (TRAIN_CAR * cw));
     const lx = Math.floor(dx / cw) - car * TRAIN_CAR;
-    if (ly === 3) return lx === 1 || lx === 8 ? (G_O << 4) | 1 : rail;
-    if (lx === 10) return ly === 4 ? (G_H << 4) | 2 : NOT_HERE;
-    if (ly === 5) return ((lx === 0 ? (car === 0 ? G_RTL : G_TL) : lx === 9 ? G_TR : G_H) << 4) | 1;
-    if (lx === 0 || lx === 9) return (G_PIPE << 4) | 1;
-    if (car === 0) return lx <= 2 ? (G_SMALL << 4) | 1 : (G_DARK << 4) | 3;
-    return lx % 2 === 1 ? (env.night > 0.4 ? (G_SMALL << 4) | 1 : (G_OPEN << 4) | 3) : -1;
+    const body = cr(WATER, 0);
+    if (ly === 3) return lx === 1 || lx === 8 ? (G_O << 7) | 1 : rail;
+    if (lx === 10) return ly === 4 ? (G_H << 7) | 2 : NOT_HERE;
+    if (ly === 5) return ((lx === 0 ? (car === 0 ? G_RTL : G_TL) : lx === 9 ? G_TR : G_H) << 7) | body;
+    if (lx === 0 || lx === 9) return (G_PIPE << 7) | body;
+    if (car === 0) return lx <= 2 ? (G_SMALL << 7) | cr(SKY, 0) : (G_DARK << 7) | cr(WATER, 1);
+    return lx % 2 === 1 ? (env.night > 0.4 ? (G_SMALL << 7) | cr(WINDOW, 0) : (G_OPEN << 7) | cr(SKY, 1)) : -1;
   }
 
   // Wind turbines with three turning blades.
@@ -898,10 +976,10 @@
     if (hash2(k, 131) > 0.55) return NOT_HERE;
     const mast = Math.round((L.H * 0.3) / ch);
     const dxc = wc - k * TURBINE_GAP;
-    if (dxc === 0 && ly < mast) return (G_PIPE << 4) | 2;
+    if (dxc === 0 && ly < mast) return (G_PIPE << 7) | 2;
     const dx = dxc * cw, dy = (ly - mast) * ch;
     const r = Math.hypot(dx, dy);
-    if (r < 1) return (G_PLUS << 4) | 1;
+    if (r < 1) return (G_PLUS << 7) | 1;
     if (r > L.H * 0.12) return NOT_HERE;
     const a = Math.atan2(dy, dx);
     const rot = t * 1.2 + k * 2.1;
@@ -911,7 +989,7 @@
       if (Math.abs(diff) * r < cw * 0.7) {
         const ang = mod(blade, Math.PI);
         const g = ang < Math.PI / 8 || ang > (7 * Math.PI) / 8 ? G_H : ang < (3 * Math.PI) / 8 ? G_SLASH : ang < (5 * Math.PI) / 8 ? G_PIPE : G_BACK;
-        return (g << 4) | 2;
+        return (g << 7) | 2;
       }
     }
     return NOT_HERE;
@@ -929,10 +1007,10 @@
     const inset = ly >> 1;
     const l = x0 + inset, r = x0 + w - 1 - inset;
     if (lx < l || lx > r) return NOT_HERE;
-    if (ly === hgt - 1) return (G_H << 4) | 2;
-    if (lx === l) return (G_SLASH << 4) | 2;
-    if (lx === r) return (G_BACK << 4) | 2;
-    return ly % 2 === 0 ? (G_H << 4) | 5 : mod(lx * 7 + ly, 5) === 0 ? (G_DOT << 4) | 4 : -1;
+    if (ly === hgt - 1) return (G_H << 7) | cr(CLAY, 0);
+    if (lx === l) return (G_SLASH << 7) | cr(CLAY, 0);
+    if (lx === r) return (G_BACK << 7) | cr(CLAY, 0);
+    return ly % 2 === 0 ? (G_H << 7) | cr(CLAY, 1) : mod(lx * 7 + ly, 5) === 0 ? (G_DOT << 7) | cr(CLAY, 0) : -1;
   }
 
   function midCell(x, sy, t, biome) {
@@ -966,16 +1044,16 @@
     const ri = Math.floor((sy - L.roadTop) / ch);
     const wc = Math.floor((x + t * SPEED_ROAD) / cw);
     const biome = BB[c];
-    if (ri === 0) return ((hash2(wc >> 2, 91) < 0.85 ? G_H : G_HH) << 4) | (biome === DESERT ? 3 : 1);
-    if (ri === 1) return hash2(wc, 77) < 0.04 ? (G_DOT << 4) | 5 : -1;
-    if (ri === 2) return mod(wc, 7) < 3 ? (G_DASH << 4) | 3 : -1;
+    if (ri === 0) return ((hash2(wc >> 2, 91) < 0.85 ? G_H : G_HH) << 7) | (biome === DESERT ? 3 : 1);
+    if (ri === 1) return hash2(wc, 77) < 0.04 ? (G_DOT << 7) | 5 : -1;
+    if (ri === 2) return mod(wc, 7) < 3 ? (G_DASH << 7) | cr(WHEAT, 0) : -1;
     const hv = hash2(wc, 88);
     switch (biome) {
-      case CITY: return ((mod(wc, 5) === 0 ? G_POST : G_HH) << 4) | 1;
-      case BRIDGE: return (((wc & 1) ? G_SLASH : G_BACK) << 4) | 2;
-      case MOUNTAINS: return ((mod(wc, 4) === 0 ? G_DTEE : G_HH) << 4) | 2;
-      case DESERT: return hv < 0.3 ? (pick(S.base, hv * 3) << 4) | 4 : -1;
-      default: return hv < 0.6 ? (pick(S.fern, hv) << 4) | 3 : -1;
+      case CITY: return ((mod(wc, 5) === 0 ? G_POST : G_HH) << 7) | 1;
+      case BRIDGE: return (((wc & 1) ? G_SLASH : G_BACK) << 7) | cr(CLAY, 1);
+      case MOUNTAINS: return ((mod(wc, 4) === 0 ? G_DTEE : G_HH) << 7) | 2;
+      case DESERT: return hv < 0.3 ? (pick(S.base, hv * 3) << 7) | cr(SAND, 1) : -1;
+      default: return hv < 0.6 ? (pick(S.fern, hv) << 7) | cr(LEAF, 1) : -1;
     }
   }
 
@@ -983,9 +1061,9 @@
   // by the waves and broken up more the further down it is, with swell in
   // between. Under the bridge its piers stand in the water.
   function seaCell(c, sr, x, sy, t, wi, fade, biome) {
-    if (wi === 0) return ((hash2(Math.floor((x + t * 6) / cw) >> 2, 5) < 0.8 ? G_H : G_DASH) << 4) | 2;
+    if (wi === 0) return ((hash2(Math.floor((x + t * 6) / cw) >> 2, 5) < 0.8 ? G_H : G_DASH) << 7) | cr(WATER, 0);
     if (biome === BRIDGE && wi <= 5 && mod(Math.floor((x + t * SPEED_NEAR) / cw), SPAN) < LEGS) {
-      return (G_DARK << 4) | 3;
+      return (G_DARK << 7) | cr(CLAY, 1);
     }
     const wob = Math.sin(t * 1.3 + wi * 0.9) * cw * (0.8 + wi * 0.15);
     const rb = nearBiomeAt(x + wob, t);
@@ -994,9 +1072,11 @@
       if (b !== NOT_HERE) {
         const hv = hash3(c, sr, Math.floor(t * 3));
         if (hv > (0.75 - wi * 0.025) * fade) return -1;
-        if (b >= 0 && (b & 15) >= 7) return (G_H << 4) | 8;
-        if (b >= 0 && b >> 4 === G_SMALL) return (G_H << 4) | 1;
-        return (pick(S.reflect, hv) << 4) | (b >= 0 ? 3 : 4);
+        const row = b >= 0 ? b & 127 : -1;
+        if (row >= 7 && row <= 9) return (G_H << 7) | 8;
+        if (row === cr(WINDOW, 0)) return (G_H << 7) | cr(WINDOW, 1);
+        if (row === cr(CLAY, 0)) return (pick(S.reflect, hv) << 7) | cr(CLAY, 2);
+        return (pick(S.reflect, hv) << 7) | cr(WATER, b >= 0 ? 1 : 2);
       }
     }
     return swell(x, t, wi, fade);
@@ -1007,19 +1087,19 @@
     const segLen = 2 + ((hash2(wi, 71) * 6) | 0);
     const hs = hash2(Math.floor(wc / segLen), wi + 131);
     const dens = Math.min(0.45, 0.1 + wi * 0.035) * fade;
-    if (hs < dens) return (S.water[((hs / dens) * S.water.length) | 0] << 4) | (wi < 4 ? 4 : 3);
+    if (hs < dens) return (S.water[((hs / dens) * S.water.length) | 0] << 7) | cr(WATER, wi < 4 ? 2 : 1);
     return -1;
   }
 
   // A mountain lake that mirrors the peaks behind it.
   function lakeCell(c, sr, x, sy, t, wi, fade) {
-    if (wi === 0) return (G_H << 4) | 2;
+    if (wi === 0) return (G_H << 7) | cr(WATER, 0);
     const wob = Math.round((Math.sin(t * 1.1 + wi * 0.8) * (0.6 + wi * 0.1)));
     const cc = Math.min(cols - 1, Math.max(0, c + wob));
     if (HB[cc] === MOUNTAINS && 2 * L.waterTop - sy >= HF[cc]) {
       const hv = hash3(c, sr, Math.floor(t * 3));
       if (hv > (0.8 - wi * 0.03) * fade) return -1;
-      return (pick(S.reflect, hv) << 4) | 3;
+      return (pick(S.reflect, hv) << 7) | cr(ROCK, 2);
     }
     return swell(x, t, wi, fade * 0.7);
   }
@@ -1029,10 +1109,11 @@
     const wc = Math.floor((x + t * SPEED_ROAD * (0.6 + wi * 0.08)) / cw);
     const hv = hash2(wc, wi + 211);
     if (wi % 2 === 0) {
-      if (hv < 0.004) return (G("*") << 4) | 7;
-      return hv < 0.65 * fade ? (pick(S.crop, hash2(wi, wc)) << 4) | (wi < 4 ? 3 : 2) : -1;
+      if (hv < 0.004) return (G("*") << 7) | 7;
+      if (hv < 0.009) return (G("*") << 7) | cr(DUSK, 0);
+      return hv < 0.65 * fade ? (pick(S.crop, hash2(wi, wc)) << 7) | cr(wi & 2 ? WHEAT : GRASS, wi < 4 ? 1 : 0) : -1;
     }
-    return hv < 0.25 * fade ? (G_US << 4) | 4 : -1;
+    return hv < 0.25 * fade ? (G_US << 7) | cr(ROCK, 2) : -1;
   }
 
   // Sand with ripples, and heat shimmer on the rows next to the road.
@@ -1040,15 +1121,16 @@
     const shimmer = wi < 3 ? Math.sin(t * 7 + wi * 2 + x * 0.05) * cw : 0;
     const wc = Math.floor((x + t * SPEED_ROAD * (0.5 + wi * 0.07) + shimmer) / cw);
     const hv = hash2(Math.floor(wc / 3), wi + 221);
-    if (hv < 0.3 * fade) return (G_TILDE << 4) | (wi < 4 ? 4 : 3);
-    return hash2(wc, wi + 222) < 0.03 * fade ? (G_DOT << 4) | 3 : -1;
+    if (hv < 0.3 * fade) return (G_TILDE << 7) | cr(SAND, wi < 4 ? 1 : 0);
+    return hash2(wc, wi + 222) < 0.03 * fade ? (G_DOT << 7) | cr(ROCK, 1) : -1;
   }
 
   // Ferns and undergrowth under the trees, thinning out further down.
   function undergrowthCell(x, t, wi, fade) {
     const wc = Math.floor((x + t * SPEED_ROAD * (0.6 + wi * 0.06)) / cw);
     const hv = hash2(wc, wi + 231);
-    if (hv < (0.55 - wi * 0.035) * fade) return (pick(S.fern, hash2(wi, wc)) << 4) | (wi < 3 ? 2 : 3);
+    if (hv < 0.006 * fade) return (G("*") << 7) | cr(WINDOW, 0);
+    if (hv < (0.55 - wi * 0.035) * fade) return (pick(S.fern, hash2(wi, wc)) << 7) | cr(wc & 1 ? LEAF : PINE, wi < 3 ? 0 : 1);
     return -1;
   }
 
@@ -1100,8 +1182,8 @@
           if (cy >= top && cy < bot) {
             if (hb < 0.07) {
               const half = 1 + ((hash2(slot, k + 77) * 4) | 0);
-              if (Math.abs(c - center) <= half) return G_HEAVY << 4;
-            } else if (c === center) return (G_BULLET << 4) | 1;
+              if (Math.abs(c - center) <= half) return G_HEAVY << 7;
+            } else if (c === center) return (G_BULLET << 7) | 1;
           }
         }
       }
@@ -1116,13 +1198,13 @@
             g = d < ch / 3 ? G_MACRON : d < (2 * ch) / 3 ? G_DASH : G_US;
           } else if (Math.abs(slope) < 2.2) g = slope < 0 ? G_SLASH : G_BACK;
           else g = G_PIPE;
-          curve = (g << 4) | lvl;
+          curve = (g << 7) | lvl;
         }
       }
     }
     if (curve >= 0) return curve;
-    if (c % GRID === 0) return (G_GRID << 4) | 6;
-    if (hash3(c, r, Math.floor(t * 0.35 + hash2(c, r + 7000) * 8)) < 0.002) return (pick(S.energy, hash2(r, c)) << 4) | 5;
+    if (c % GRID === 0) return (G_GRID << 7) | 6;
+    if (hash3(c, r, Math.floor(t * 0.35 + hash2(c, r + 7000) * 8)) < 0.002) return (pick(S.energy, hash2(r, c)) << 7) | 5;
     return -1;
   }
 
@@ -1147,7 +1229,7 @@
     const ri = Math.floor(dy / ch);
     if (ri === 0) {
       const wc = Math.floor((x + t * 6) / cw);
-      return ((hash2(wc >> 2, 3) < 0.85 ? G_H : G_HH) << 4) | 1;
+      return ((hash2(wc >> 2, 3) < 0.85 ? G_H : G_HH) << 7) | 1;
     }
     const sway = Math.sin(t * 0.9 + ri * 0.7) * cw * 1.2;
     const wc = Math.floor((x + t * (4 + ri * 2.5) + sway) / cw);
@@ -1155,8 +1237,8 @@
     const hs = hash2(Math.floor(wc / segLen), ri + 131);
     const dens = Math.min(0.7, 0.16 + ri * 0.05);
     if (hs < dens) {
-      if (hash2(wc, ri + 7) < 0.03) return (G_SQ << 4) | 1;
-      return (S.water[((hs / dens) * S.water.length) | 0] << 4) | (ri < 3 ? 3 : ri < 7 ? 2 : 1);
+      if (hash2(wc, ri + 7) < 0.03) return (G_SQ << 7) | 1;
+      return (S.water[((hs / dens) * S.water.length) | 0] << 7) | (ri < 3 ? 3 : ri < 7 ? 2 : 1);
     }
     return -1;
   }
@@ -1172,9 +1254,11 @@
     const yD = r * chD - fracD;
     ctx.fillStyle = rowFill[r] || colors.bg;
     ctx.fillRect(c * cwD, yD, cwD, chD);
-    let row = code & 15;
-    if (rowInv[r] && row < 7) row += 10;
-    ctx.drawImage(atlas, (code >> 4) * cwD, row * chD, cwD, chD, c * cwD, yD, cwD, chD);
+    let row = code & 127;
+    if (row >= COLOUR_BASE) {
+      if (rowAlt[r]) row += COLOUR_ROWS;
+    } else if (rowInv[r] && row < 7) row += 10;
+    ctx.drawImage(atlas, (code >> 7) * cwD, row * chD, cwD, chD, c * cwD, yD, cwD, chD);
   }
 
   function screenRow(sceneY, heroOff) {
@@ -1194,10 +1278,10 @@
       const r0 = screenRow(L.waterTop + ch * (4 + ((hash2(k, 153) * 4) | 0)), heroOff);
       for (let j = 0; j < BOAT.length; j++) {
         for (let i = 0; i < BOAT[j].length; i++) {
-          if (BOAT[j][i] !== " ") putCell(col + i, r0 - 2 + j, (G(BOAT[j][i]) << 4) | 1);
+          if (BOAT[j][i] !== " ") putCell(col + i, r0 - 2 + j, (G(BOAT[j][i]) << 7) | (j === 2 ? cr(CLAY, 0) : 1));
         }
       }
-      if (env.night > 0.4) putCell(col + 1, r0 - 3, (G_DOT << 4) | 7);
+      if (env.night > 0.4) putCell(col + 1, r0 - 3, (G_DOT << 7) | cr(WINDOW, 0));
     }
   }
 
@@ -1207,7 +1291,7 @@
     const c = Math.floor((vw + 30 - tau * 110) / cw);
     if (c < 0 || c >= cols || BB[c] !== DESERT) return;
     const bounce = Math.abs(Math.sin(tau * 5)) * ch * 1.2;
-    putCell(c, screenRow(L.roadTop - ch * 0.5 - bounce, heroOff), ((Math.floor(tau * 8) & 1 ? G_AT : G_AMP) << 4) | 1);
+    putCell(c, screenRow(L.roadTop - ch * 0.5 - bounce, heroOff), ((Math.floor(tau * 8) & 1 ? G_AT : G_AMP) << 7) | cr(ROCK, 0));
   }
 
   function drawBirds(t, heroOff) {
@@ -1220,7 +1304,7 @@
       const x = -40 + tau * 62 - Math.abs(i - n / 2) * 16;
       const y = baseY + Math.abs(i - n / 2) * 7 + Math.sin(t * 2 + i) * 3;
       const flap = Math.floor(t * 5 + i) & 1;
-      putCell(Math.floor(x / cw), screenRow(y, heroOff), ((flap ? G_V : G_DASH) << 4) | 1);
+      putCell(Math.floor(x / cw), screenRow(y, heroOff), ((flap ? G_V : G_DASH) << 7) | 1);
     }
   }
 
@@ -1230,13 +1314,15 @@
     const c0 = Math.floor((vw + 60 - (tau / 16) * (vw + 160)) / cw);
     const r0 = screenRow(L.H * (0.06 + 0.1 * hash2(k, 172)), heroOff);
     if (env.night > 0.5) {
-      putCell(c0, r0, ((Math.floor(t * 2) & 1 ? G_BULLET : G_DOT) << 4) | 7);
-      putCell(c0 + 3, r0, (G_DOT << 4) | 2);
+      // Navigation lights: red on one wing, green on the other.
+      const on = Math.floor(t * 2) & 1;
+      putCell(c0, r0, ((on ? G_BULLET : G_DOT) << 7) | 7);
+      putCell(c0 + 3, r0, ((on ? G_DOT : G_BULLET) << 7) | cr(LEAF, 0));
       return;
     }
-    for (let i = 0; i < PLANE.length; i++) putCell(c0 + i, r0, (PLANE[i] << 4) | 1);
+    for (let i = 0; i < PLANE.length; i++) putCell(c0 + i, r0, (PLANE[i] << 7) | 1);
     for (let i = 0; i < 14; i++) {
-      if ((i + Math.floor(t * 6)) % 3 !== 0) putCell(c0 + PLANE.length + i, r0, (G_DASH << 4) | (i < 5 ? 3 : i < 10 ? 4 : 5));
+      if ((i + Math.floor(t * 6)) % 3 !== 0) putCell(c0 + PLANE.length + i, r0, (G_DASH << 7) | (i < 5 ? 3 : i < 10 ? 4 : 5));
     }
   }
 
@@ -1249,7 +1335,7 @@
     const hy = L.H * (0.05 + 0.25 * hash2(k, 183)) + 0.4 * len;
     for (let i = 0; i < 10; i++) {
       const px = hx - 0.92 * i * cw * 1.3, py = hy - 0.4 * i * cw * 1.3;
-      putCell(Math.floor(px / cw), screenRow(py, heroOff), ((i === 0 ? G_PLUS : G_DASH) << 4) | Math.min(5, i >> 1));
+      putCell(Math.floor(px / cw), screenRow(py, heroOff), ((i === 0 ? G_PLUS : G_DASH) << 7) | cr(NIGHT, Math.min(2, i >> 2)));
     }
   }
 
@@ -1270,8 +1356,8 @@
         const y = mod(hash2(c, 192) * vh * 1.2 + t * 380, vh * 1.2) - vh * 0.1;
         if (y > bottom) continue;
         const r = Math.floor((y + frac) / ch);
-        putCell(c, r, (G_SLASH << 4) | 3);
-        putCell(c + 1, r - 1, (G_SLASH << 4) | 4);
+        putCell(c, r, (G_SLASH << 7) | cr(WATER, 1));
+        putCell(c + 1, r - 1, (G_SLASH << 7) | cr(WATER, 2));
       }
     }
     if (snow > 0.05) {
@@ -1282,7 +1368,7 @@
           const y = mod(hash2(c, 197 + f) * vh + t * (28 + 20 * hs), vh);
           if (y > bottom) continue;
           const x = (c + 0.5) * cw + Math.sin(t * 0.8 + hs * 60) * cw * 1.5;
-          putCell(Math.floor(x / cw), Math.floor((y + frac) / ch), ((hs < 0.1 * snow ? G("*") : G_DOT) << 4) | 2);
+          putCell(Math.floor(x / cw), Math.floor((y + frac) / ch), ((hs < 0.1 * snow ? G("*") : G_DOT) << 7) | cr(SNOW, 0));
         }
       }
     }
@@ -1303,7 +1389,7 @@
         const hv = hash3(c, r, Math.floor(t * 6));
         if (hv > strength * (0.35 + fall * 0.65)) continue;
         const g = Math.abs(dy) < ch * 0.6 ? G_HH : hv < 0.4 ? G_H : G_DASH;
-        putCell(c, r, (g << 4) | (fall > 0.5 ? 7 : fall > 0.2 ? 8 : 9));
+        putCell(c, r, (g << 7) | cr(WINDOW, fall > 0.5 ? 0 : fall > 0.2 ? 1 : 2));
       }
     }
   }
@@ -1311,7 +1397,8 @@
   // ------------------------------------------------------------------ car ---
 
   // A small rally hatchback facing right. k = ink, a = accent, w = paper,
-  // g = glass. The wheels are drawn separately so they can turn.
+  // g = glass, h = headlights. The wheels are drawn separately so they can
+  // turn.
   const CAR = [
     "........kkkkkkkkkkkkkk............",
     ".kkkk..kaaaaaaaaaaaaaak...........",
@@ -1319,7 +1406,7 @@
     ".kaaakggggkggggggggggggak.........",
     ".kaaakggggkgggggggggggggakkkkkkk..",
     ".kaaaaaaaaaaaaaaaaaaaaaaaaaaaaaakk",
-    ".kaaaaaaaaawwwwwaaaaaaaaaaaaaaaaww",
+    ".kaaaaaaaaawwwwwaaaaaaaaaaaaaaaahh",
     ".kaaaaaaaawwkkkwwaaaaaaaaaaaaaaaak",
     ".kaaaaaaaawwwkwwwaaaaaaaaaaaaaaaak",
     ".kkaaaaaaaawwwwwaaaaaaaaaaaaaaaakk",
@@ -1344,7 +1431,7 @@
         const cell = Math.floor((py + fracD) / chD) * cols + Math.floor(px / cwD);
         if (cell >= 0 && cell < N && mask[cell] === 1) continue;
         ctx.globalAlpha = k === "g" ? 0.35 : 1;
-        ctx.fillStyle = k === "a" ? pal.a : k === "w" ? pal.w : pal.k;
+        ctx.fillStyle = k === "a" ? pal.a : k === "w" ? pal.w : k === "h" ? pal.h : pal.k;
         ctx.fillRect(px, py, pD, pD);
       }
     }
@@ -1388,7 +1475,12 @@
     // On a dark night sky the outline flips to the page colour.
     const midRow = Math.floor((car.y + car.h / 2 + frac) / ch);
     const inv = midRow >= 0 && midRow < rows && rowInv[midRow] === 1;
-    const pal = { a: colors.accent, k: inv ? colors.bg : colors.fg, w: inv ? colors.fg : colors.bg };
+    const pal = {
+      a: colors.accent,
+      k: inv ? colors.bg : colors.fg,
+      w: inv ? colors.fg : colors.bg,
+      h: env.night > 0.35 ? PALETTE[WINDOW][1] : inv ? colors.fg : colors.bg,
+    };
     const ox = Math.round(car.x * dpr);
     const oy = Math.round(car.y * dpr);
     const bump = !reduced && hop === 0 && hash2(Math.floor(t * 6), 5) < 0.22 ? -pD : 0;
@@ -1436,7 +1528,7 @@
     for (let i = 0; i < dust.length; i++) {
       const d = dust[i];
       const age = (t - d.born) / d.life;
-      putCell(Math.floor(d.x / cw), screenRow(d.y, heroOff), (d.g << 4) | (age < 0.3 ? 2 : age < 0.6 ? 3 : 4));
+      putCell(Math.floor(d.x / cw), screenRow(d.y, heroOff), (d.g << 7) | cr(SAND, age < 0.3 ? 0 : age < 0.6 ? 1 : 2));
     }
   }
 
@@ -1556,6 +1648,7 @@
       const yD = r * chD - fracD;
       const base = r * cols;
       const inv = rowInv[r];
+      const alt = rowAlt[r];
       const fill = rowFill[r] || colors.bg;
       const rowAll = full || rowFill[r] !== prevFill[r];
       prevFill[r] = rowFill[r];
@@ -1574,7 +1667,7 @@
           code = -1;
         } else if (e > 0.06) {
           const g = pick(S.energy, hash3(c, r, Math.floor(t * 14 + RA[idx] * 10)));
-          code = (g << 4) | (7 + (e > 0.55 ? 0 : e > 0.28 ? 1 : 2));
+          code = (g << 7) | (7 + (e > 0.55 ? 0 : e > 0.28 ? 1 : 2));
         } else if (sy > seaTop) {
           code = waterCell(x, sy - seaTop, t);
         } else {
@@ -1592,9 +1685,11 @@
         }
         prevCode[idx] = code;
         if (code >= 0) {
-          let row = code & 15;
-          if (inv && row < 7) row += 10;
-          ctx.drawImage(atlas, (code >> 4) * cwD, row * chD, cwD, chD, c * cwD, yD, cwD, chD);
+          let row = code & 127;
+          if (row >= COLOUR_BASE) {
+            if (alt) row += COLOUR_ROWS;
+          } else if (inv && row < 7) row += 10;
+          ctx.drawImage(atlas, (code >> 7) * cwD, row * chD, cwD, chD, c * cwD, yD, cwD, chD);
         }
       }
     }
