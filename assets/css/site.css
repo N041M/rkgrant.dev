@@ -101,9 +101,15 @@ a:hover { color: var(--accent-ink); }
 
 p, h1, h2, h3, h4 { margin: 0; }
 
-/* Text blocks sit on the page colour. The field also clears a ragged margin
-   around every .ko element. */
-.ko { background: var(--bg); }
+/* The field clears a ragged margin around every .ko element, so text sits
+   straight on the scene without a box behind it. Components with a border
+   (the top bar, buttons, cards and the globe) carry their own background. */
+
+/* On the light theme the night darkens the scene behind the hero, and the
+   field sets data-scene="dark" while it does, so the hero text turns light. */
+.hero { transition: color 1.2s ease; }
+html[data-scene="dark"] .hero { color: var(--bg); }
+html[data-scene="dark"] .hero .btn-solid { border-color: var(--bg); }
 
 .wrap {
   width: 100%;
@@ -165,6 +171,7 @@ p, h1, h2, h3, h4 { margin: 0; }
   padding: 0 7px 0 10px;
   border: 1px solid var(--fg);
   border-radius: 12px;
+  background: var(--bg);
   pointer-events: auto;
 }
 
@@ -303,6 +310,7 @@ p, h1, h2, h3, h4 { margin: 0; }
   height: 46px;
   padding: 0 16px;
   border: 1px solid var(--fg);
+  background: var(--bg);
   color: var(--fg);
   font: 16.5px/1 var(--mono);
   text-decoration: none;
@@ -360,6 +368,7 @@ h2 { font: 400 clamp(33px, 5vw, 55px)/1 var(--mono); }
   display: flex;
   flex-direction: column;
   border: 1px solid var(--fg);
+  background: var(--bg);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 .card:hover { transform: translate(-3px, -3px); box-shadow: 6px 6px 0 var(--accent); }
@@ -573,7 +582,7 @@ h2 { font: 400 clamp(33px, 5vw, 55px)/1 var(--mono); }
 .contact-list dt { line-height: 2; }
 .contact-list dd { margin: 0; }
 
-.globe-fig { border: 1px solid var(--fg); }
+.globe-fig { border: 1px solid var(--fg); background-color: var(--bg); }
 .globe-fig .plot { height: 322px; }
 
 @media (max-width: 860px) {

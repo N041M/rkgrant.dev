@@ -238,6 +238,9 @@
   let frac = 0, fracD = 0, seaTop = Infinity;
   let heroEl = null, shoreEl = null, koEls = [];
   let heroH = 0;
+  // The hero's text blocks (left, right and bottom in page px), which the
+  // road keeps clear of, and whether the hero text is currently shown light.
+  let heroText = null, heroBlocks = [], sceneDark = false;
   let reduced = reducedMQ.matches;
   let started = false;
   let raf = 0, lastDraw = 0, lastT = 0, lastScroll = -1;
@@ -306,6 +309,13 @@
     shoreEl = document.querySelector("[data-shore]");
     koEls = Array.from(document.querySelectorAll(".ko"));
     heroH = heroEl ? heroEl.offsetHeight : 0;
+    heroText = heroEl ? heroEl.querySelector(".hero-inner") : null;
+    heroBlocks = heroEl
+      ? Array.from(heroEl.querySelectorAll(".ko")).map(function (el) {
+          const r = el.getBoundingClientRect();
+          return { left: r.left, right: r.right, bottom: r.bottom + window.scrollY };
+        })
+      : [];
     // The water reaches the shore spacer exactly when the page is scrolled to
     // the end, and stays below it before that.
     const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
@@ -1334,19 +1344,34 @@
     ctx.globalAlpha = 1;
   }
 
+  function sizeCar() {
+    car.p = vw < 640 ? 3 : vw < 1200 ? 4 : 5;
+    car.w = CAR_W * car.p;
+    car.h = CAR_H * car.p;
+    car.x = vw * (vw < 640 ? 0.62 : 0.7) - car.w / 2;
+  }
+
+  // The road sits at 80% of the hero, or lower if the car would otherwise
+  // drive behind the hero text above it.
+  function roadTopFor(H) {
+    let clear = 0;
+    for (let i = 0; i < heroBlocks.length; i++) {
+      const b = heroBlocks[i];
+      if (b.right > car.x - 8 && b.left < car.x + car.w + 8) clear = Math.max(clear, b.bottom);
+    }
+    const min = clear ? clear + 10 + car.h - ch * 2.4 : 0;
+    return Math.ceil(Math.max(H * 0.8, min) / ch) * ch;
+  }
+
   function drawCar(t, heroOff, heroFade) {
     car.visible = false;
     // The car leaves before the rest of the landscape does.
     heroFade = Math.min(heroFade, 1 - smooth(heroH * 0.15, heroH * 0.5, window.scrollY || 0));
     if (!heroEl || heroFade <= 0) return;
-    const P = vw < 640 ? 3 : vw < 1200 ? 4 : 5;
+    const P = car.p;
     const pD = Math.max(1, Math.round(P * dpr));
     const bottom = L.roadTop + ch * 2.4 - heroOff;
-    if (bottom < -40 || bottom - CAR_H * P > vh) return;
-    car.p = P;
-    car.w = CAR_W * P;
-    car.h = CAR_H * P;
-    car.x = vw * (vw < 640 ? 0.62 : 0.7) - car.w / 2;
+    if (bottom < -40 || bottom - car.h > vh) return;
     let hop = 0;
     const since = t - car.hopT;
     if (since < 0.55) hop = Math.sin((since / 0.55) * Math.PI) * 22;
@@ -1453,12 +1478,31 @@
 
   // ----------------------------------------------------------------- draw ---
 
+  // When the scene behind the hero text is dark (the light theme at night),
+  // the page is told so the text can switch to light ink.
+  function updateSceneInk() {
+    let dark = false;
+    if (!darkPage && heroText) {
+      const rc = heroText.getBoundingClientRect();
+      const r0 = Math.max(0, Math.floor((rc.top + frac) / ch));
+      const r1 = Math.min(rows - 1, Math.floor((rc.bottom + frac) / ch));
+      let sum = 0;
+      for (let r = r0; r <= r1; r++) sum += tone[r];
+      dark = r1 >= r0 && sum / (r1 - r0 + 1) > 0.45;
+    }
+    if (dark === sceneDark) return;
+    sceneDark = dark;
+    if (dark) root.setAttribute("data-scene", "dark");
+    else root.removeAttribute("data-scene");
+  }
+
   function draw(t, dt) {
     const scrollY = window.scrollY || 0;
     const H = heroH || vh;
     L.H = H;
     L.cloudBase = H * 0.4;
-    L.roadTop = Math.round((H * 0.8) / ch) * ch;
+    sizeCar();
+    L.roadTop = roadTopFor(H);
     L.waterTop = L.roadTop + ch * 4;
     L.cityH = H * 0.42;
     L.farCityH = H * 0.34;
@@ -1475,7 +1519,10 @@
     zzKey = -1;
     if (needCalm) computeTraces(t, rowOff * ch);
     if (heroVisible) computeColumns(t);
-    computeTone(heroVisible ? heroFade : 0, rowOff);
+    // The night tint fades out quickly once the page scrolls, so the sections
+    // below never sit on a half-dark sky.
+    computeTone(heroVisible ? heroFade * (1 - smooth(H * 0.1, H * 0.6, scrollY)) : 0, rowOff);
+    updateSceneInk();
     buildMask();
 
     if (!reduced) {
@@ -1650,6 +1697,10 @@
   new MutationObserver(onTheme).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
   darkMQ.addEventListener("change", onTheme);
   reducedMQ.addEventListener("change", restartLoop);
+  document.addEventListener("langchange", function () {
+    if (!started) return;
+    requestAnimationFrame(measureLayout);
+  });
 
   let lastPX = null, lastPY = null;
   window.addEventListener("pointermove", function (e) {
