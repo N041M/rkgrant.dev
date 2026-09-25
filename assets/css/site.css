@@ -311,8 +311,8 @@ p, h1, h2, h3, h4 { margin: 0; }
 .eyebrow .sq { background: var(--on-accent); }
 
 .name {
-  font: 400 clamp(40px, min(11.5vw, 15vh), 143px)/0.92 var(--mono);
-  letter-spacing: 0;
+  font: 400 clamp(36px, min(8vw, 11vh), 96px)/0.92 var(--mono);
+  letter-spacing: -0.04em;
   margin: 0.04em 0 0.1em;
 }
 .name .line {

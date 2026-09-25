@@ -154,7 +154,7 @@
     // 2×2 block glyphs, indexed by top-left·8 + top-right·4 + bottom-left·2 + bottom-right.
     quads: " ▗▖▄▝▐▞▟▘▚▌▙▀▜▛█",
   };
-  const EXTRA = "/\\-─═■·^_|.━•¯│┊╷□▪┌┐╭╮╧║╦┬┼▲▼+✦o┃┗┛Ψ▟▙▄█▓░@&v◄╪╗~¦†┄★→▒╤ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const EXTRA = "/\\-─═■·^_|.━•¯│┊╷□▪┌┐╭╮╧║╦┬┼▲▼+✦o┃┗┛Ψ▟▙▄█▓░@&v◄╪╗~¦†┄★→▒╤ABCDEFGHIJKLMNOPQRSTUVWXYZ╳╱╲╫▚▞▀┴├┤╪┃╋╬┘└ÉČÍÝ";
   const GLYPHS = Array.from(new Set(Array.from(Object.values(SETS).join("") + EXTRA)));
   const GI = new Map(GLYPHS.map(function (g, i) { return [g, i]; }));
   const S = {};
@@ -171,6 +171,7 @@
   const G_HPIPE = G("┃"), G_BLH = G("┗"), G_BRH = G("┛"), G_PSI = G("Ψ"), G_DARK = G("▓");
   const G_ROCK_L = G("▟"), G_ROCK_R = G("▙"), G_ROCK_M = G("█"), G_ROCK_T = G("▄");
   const G_AT = G("@"), G_AMP = G("&"), G_V = G("v"), G_TILDE = G("~"), G_SNOWFIELD = G("░");
+  const G_CHK_A = G("▚"), G_CHK_B = G("▞");
   const G_TAPE = G("┄"), G_SHINGLE = G("▒"), G_STAR = G("*"), G_CLUB = G("♣"), G_RAIL = G("╤");
   const PLANE = Array.from("◄═╪═╗", G);
 
@@ -187,7 +188,7 @@
   // light page by day and a brighter one for the dark page and a dark night.
   const SKY = 0, SUN = 1, DUSK = 2, NIGHT = 3, WINDOW = 4, LEAF = 5, PINE = 6, GRASS = 7;
   const WHEAT = 8, WATER = 9, SAND = 10, CLAY = 11, ROCK = 12, SNOW = 13, SLATE = 14;
-  const PURPLE = 15, PAPER = 16;
+  const PURPLE = 15, PAPER = 16, INKD = 17;
   const PALETTE = [
     ["#6f9bc8", "#7fa8d6"], // sky
     ["#e3931a", "#f4b73c"], // sun
@@ -206,6 +207,7 @@
     ["#7f8ca2", "#9aa6bb"], // slate: distant hills and buildings
     ["#7d5fb0", "#b39ae6"], // purple: the northern lights and shirts
     ["#dcd8cf", "#f5f4f0"], // paper: signs, tape and the lighthouse stripes
+    ["#1b1c20", "#1b1c20"], // dark ink for text on light signs
   ];
   const COLOUR_LEVELS = [1, 0.7, 0.42];
   const COLOUR_BASE = 17;
@@ -277,7 +279,7 @@
   let mask, E, RA;
   // Per column: terrain height, terrain biome, and the biome of the front
   // layer, the middle layer and the road and water.
-  let HF, HB, NBI, MBI, BB;
+  let HF, HB, NBI, MBI, BB, SEA;
   let tone, rowInv, rowAlt, rowFill = [];
   // Per row: tone is 1 on rows dark enough for light glyphs, rowInv flips
   // ink to the page colour there, and rowAlt picks the brighter scene colours.
@@ -408,6 +410,7 @@
     HB = new Uint8Array(cols);
     NBI = new Uint8Array(cols);
     MBI = new Uint8Array(cols);
+    SEA = new Float32Array(cols);
     BB = new Uint8Array(cols);
     tone = new Float32Array(rows);
     rowInv = new Uint8Array(rows);
@@ -559,9 +562,11 @@
     return ORDER[mod(idx + (spanIsBridge(k - 1) ? 1 : -1), NB)];
   }
 
+  // Front-layer objects stand on lots, and a lot belongs to the place its
+  // middle is in. The set piece where two places meet covers the change.
   function nearBiomeAt(x, t) {
     const lot = Math.floor(Math.floor((x + t * SPEED_NEAR) / cw) / LOT_NEAR);
-    return biomeAt((lot + 0.5) * LOT_NEAR * cw, BIOME_LEN, lot, 41);
+    return placeAt(lot * LOT_NEAR + (LOT_NEAR >> 1));
   }
 
   function ridge(u, seed) {
@@ -575,7 +580,7 @@
     const H = L.H;
     switch (biome) {
       case CITY: return H * 0.28 * ridge(u, 1.7);
-      case BRIDGE: return H * 0.1 * ridge(u * 0.8, 3.1);
+      case BRIDGE: return H * 0.2 + H * 0.09 * ridge(u * 0.8, 3.1);
       case HIGHWAY: return H * 0.14 * ridge(u * 0.7, 6.2);
       case SHORE: return H * 0.2;
       case COUNTRY:
@@ -601,15 +606,19 @@
       const i = Math.floor(b);
       const w = smooth(1 - BLEND, 1, b - i);
       const u = (x + t * SPEED_HILLS) / 520;
-      let tb = ORDER[mod(i, NB)];
-      let h = terrainHeight(tb, u);
+      const cur = ORDER[mod(i, NB)], nxt = ORDER[mod(i + 1, NB)];
+      let tb = cur;
+      let h = terrainHeight(cur, u);
+      // How many rows of sea show behind the road, blended like the height.
+      let sea = seaBehind(cur);
       if (w > 0) {
-        const nb = ORDER[mod(i + 1, NB)];
-        h += (terrainHeight(nb, u) - h) * w;
-        if (hash2(Math.floor(wn / (cw * 3)), 5) < w) tb = nb;
+        h += (terrainHeight(nxt, u) - h) * w;
+        sea += (seaBehind(nxt) - sea) * w;
+        if (hash2(Math.floor(wn / (cw * 3)), 5) < w) tb = nxt;
       }
       HF[c] = L.roadTop - h;
       HB[c] = tb;
+      SEA[c] = Math.min(sea * seaRows(), h / ch);
       BB[c] = placeAt(Math.floor(wn / cw));
       NBI[c] = nearBiomeAt(x, t);
       // A middle-layer object takes the place its centre is in right now.
@@ -617,6 +626,11 @@
       const lotX = (mlot + 0.5) * LOT_MID * cw - t * SPEED_MID;
       MBI[c] = biomeAt(lotX + t * SPEED_NEAR, BIOME_LEN, mlot, 31);
     }
+  }
+
+  // The sea shows behind the road along the bridge and the shore road.
+  function seaBehind(p) {
+    return p === BRIDGE || p === SHORE ? 1 : 0;
   }
 
   // Samples every visible trace at each column edge, in scene pixels. A trace
@@ -731,6 +745,31 @@
     const wc = Math.floor(((c + 0.5) * cw + t * SPEED_HILLS) / cw);
     const hv = hash2(wc, sr + 1900);
     const edge = depth < Math.max(1, (Math.abs(slope) * cw) / ch + 0.6);
+    // Water behind the road, out to the horizon or to the hills across the
+    // bay, with a strip of beach and a line of surf along the shore road. A
+    // low sun or the moon lays a path of glitter across it.
+    const ly = Math.floor((L.roadTop - sy) / ch);
+    if (ly < SEA[c]) {
+      if (HB[c] === SHORE && ly === 0) return hv < 0.45 ? (pick(S.base, hv * 2.2) << 7) | cr(SAND, 0) : -1;
+      if (HB[c] === SHORE && ly === 1) {
+        const surf = hash2(Math.floor(((c + 0.5) * cw + t * 5) / (cw * 2)), sr + 2600);
+        return surf < 0.7 ? ((surf < 0.35 ? G_TILDE : G_DASH) << 7) | cr(SNOW, surf < 0.35 ? 0 : 1) : -1;
+      }
+      const top = Math.ceil(SEA[c]) - 1;
+      if (ly === top) return (G_H << 7) | cr(WATER, 1);
+      const deep = top - ly;
+      const cx = (c + 0.5) * cw;
+      if (env.sunR > 0 && env.dusk > 0.2 && hv < 0.55 && Math.abs(cx - env.sunX) < env.sunR * (0.5 + deep * 0.08)) {
+        return (G_HH << 7) | cr(DUSK, 0);
+      }
+      if (env.moonR > 0 && env.night > 0.5 && hv < 0.4 && Math.abs(cx - env.moonX) < env.moonR * (0.4 + deep * 0.06)) {
+        return (G_H << 7) | cr(NIGHT, 1);
+      }
+      const wx = Math.floor((cx + t * (4 + deep * 1.5)) / cw);
+      const hw = hash2(Math.floor(wx / 3), sr + 2500);
+      if (hw < 0.16 + deep * 0.02) return ((hw < 0.07 ? G_TILDE : G_DASH) << 7) | cr(WATER, deep < 4 ? 2 : 1);
+      return -1;
+    }
     let eg = G_DASH;
     if (slope < -0.3) eg = G_SLASH;
     else if (slope > 0.3) eg = G_BACK;
@@ -779,29 +818,6 @@
         if (edge) return ((Math.abs(slope) < 0.3 ? G_US : eg) << 7) | cr(GRASS, 0);
         if (mod(wc, 6) < 2 && mod(sr, 3) === 0) return hv < 0.18 ? (G_BULLET << 7) | 7 : (G("♣") << 7) | cr(LEAF, 1);
         return hv < 0.08 ? (G_DOT << 7) | cr(GRASS, 2) : -1;
-      }
-      case SHORE: {
-        // The open sea out to the horizon, with waves that grow nearer the
-        // shore, a line of surf and a strip of beach along the road. A low sun
-        // or the moon lays a path of glitter across the water.
-        const ly = Math.floor((L.roadTop - sy) / ch);
-        if (ly === 0) return hv < 0.45 ? (pick(S.base, hv * 2.2) << 7) | cr(SAND, 0) : -1;
-        if (ly === 1) {
-          const surf = hash2(Math.floor(((c + 0.5) * cw + t * 5) / (cw * 2)), sr + 2600);
-          return surf < 0.7 ? ((surf < 0.35 ? G_TILDE : G_DASH) << 7) | cr(SNOW, surf < 0.35 ? 0 : 1) : -1;
-        }
-        if (edge) return (G_H << 7) | cr(WATER, 1);
-        const cx = (c + 0.5) * cw;
-        if (env.sunR > 0 && env.dusk > 0.2 && hv < 0.55 && Math.abs(cx - env.sunX) < env.sunR * (0.5 + depth * 0.08)) {
-          return (G_HH << 7) | cr(DUSK, 0);
-        }
-        if (env.moonR > 0 && env.night > 0.5 && hv < 0.4 && Math.abs(cx - env.moonX) < env.moonR * (0.4 + depth * 0.06)) {
-          return (G_H << 7) | cr(NIGHT, 1);
-        }
-        const wx = Math.floor(((c + 0.5) * cw + t * (4 + depth * 1.5)) / cw);
-        const hw = hash2(Math.floor(wx / 3), sr + 2500);
-        if (hw < 0.16 + depth * 0.02) return ((hw < 0.07 ? G_TILDE : G_DASH) << 7) | cr(WATER, depth < 4 ? 2 : 1);
-        return -1;
       }
       case DESERT: {
         if (edge) return ((Math.abs(slope) < 0.3 ? G_TILDE : eg) << 7) | cr(SAND, 0);
@@ -864,7 +880,8 @@
   const FOX = makeSprite(["b.b.........", "bbb.........", "wbbbbbbbb...", ".bbbbbbbbbbb", ".b.b...b.bbw", ".b.b...b.b.."]);
   const FOX_STEP = makeSprite(["b.b.........", "bbb.........", "wbbbbbbbb...", ".bbbbbbbbbbb", "..bb....bbbw", "..b.b..b.b.."]);
   const PALM = makeSprite(["..ff....ff..", ".f..ff.ff..f", "f....fff...f", ".....tf.....", ".....t......", "....t.......", "....t.......", "....t.......", "...t........", "...t........", "...t........", "...t........", "..tt........", "..tt........"]);
-  const SAILBOAT = makeSprite(["..m...", "..ms..", "..mss.", "..msss", "hhhhhh", ".hhhh."]);
+  // The mast has a column of cells to itself, so the sail keeps its colour.
+  const SAILBOAT = makeSprite(["...m....", "...ms...", "...mss..", "...msss.", "...mssss", "...m....", "hhhhhhhh", ".hhhhhh."]);
   const SHIP = makeSprite(["....cc......", "..ssssss....", "hhhhhhhhhhhh", ".hhhhhhhhhh."]);
   const SNOWMAN = makeSprite(["..ss..", "..ss..", ".ssss.", ".ssss.", "ssssss", "ssssss"]);
   const PERSON = makeSprite([".hh.", ".hh.", "ssss", "ssss", ".ss.", ".pp.", ".p.p", ".p.p"]);
@@ -1108,7 +1125,8 @@
     const h = hash2(lot, 301);
     if (h >= 0.35) return null;
     const x0 = lot * CABIN_LOT + 16 + ((hash2(lot, 302) * 24) | 0);
-    return h < (CABIN_DENSITY[placeAt(x0 + 7)] || 0) ? x0 : null;
+    if (h >= (CABIN_DENSITY[placeAt(x0 + 7)] || 0) || inPiece(x0) || inPiece(x0 + 14)) return null;
+    return x0;
   }
 
   function cabin(wc, ly) {
@@ -1141,11 +1159,16 @@
   // its sign.
   const GANTRY_GAP = 150;
   const GANTRY_W = 22;
+  function gantryAt(k) {
+    const g0 = k * GANTRY_GAP;
+    return placeAt(g0 + (GANTRY_W >> 1)) === HIGHWAY && !inPiece(g0) && !inPiece(g0 + GANTRY_W);
+  }
+
   function gantry(wc, ly) {
     if (ly > 12) return NOT_HERE;
     const k = Math.floor(wc / GANTRY_GAP);
     const g = wc - k * GANTRY_GAP;
-    if (g > GANTRY_W || placeAt(k * GANTRY_GAP + (GANTRY_W >> 1)) !== HIGHWAY) return NOT_HERE;
+    if (g > GANTRY_W || !gantryAt(k)) return NOT_HERE;
     if (g === 0 || g === GANTRY_W) return (G_DPIPE << 7) | cr(SLATE, 0);
     if (ly === 12) return (G_HH << 7) | cr(SLATE, 0);
     return ly >= 9 && g >= 2 && g <= GANTRY_W - 2 ? -1 : NOT_HERE;
@@ -1253,7 +1276,9 @@
     const k = Math.floor(wc / SPAN);
     if (spanIsBridge(k)) return bridgeNear(wc, ly);
     if (mod(wc, SPAN) < LEGS && spanIsBridge(k - 1)) return bridgeTower(mod(wc, SPAN), ly);
-    let p = cabin(wc, ly);
+    let p = transitionPiece(wc, ly, t);
+    if (p !== NOT_HERE) return p === CLEAR ? NOT_HERE : p;
+    p = cabin(wc, ly);
     if (p !== NOT_HERE) return p;
     p = gantry(wc, ly);
     if (p !== NOT_HERE) return p;
@@ -1346,6 +1371,7 @@
     switch (biome) {
       case CITY: return farBuilding(wc, ly, t);
       case HIGHWAY: return pine(wc, ly, 151, 0.35, 1, 3, 3);
+      case BRIDGE:
       case SHORE: return shoreMid(wc, ly, t);
       case COUNTRY:
         p = railCell(x, ly, t);
@@ -1375,11 +1401,8 @@
   }
 
   // Some landmarks in the middle distance are wider than a lot. They are an
-  // overpass across the highway, a lighthouse off the shore, a start arch over
-  // the rally stage and the village church. Each belongs to the place its
-  // middle is in.
-  const ARCH_GAP = 140;
-  const ARCH_W = 20;
+  // overpass across the highway, a lighthouse off the shore and the village
+  // church. Each belongs to the place its middle is in.
   function wideMid(wc, ly, t) {
     let lot = Math.floor(wc / 120);
     let lx = wc - lot * 120 - 30;
@@ -1390,12 +1413,6 @@
     lx = wc - lot * 110 - 50;
     if (lx >= -1 && lx <= 3 && ly <= 12 && hash2(lot, 361) < 0.45 && midPlace(lot * 110 + 51, t) === SHORE) {
       return lighthouse(lx, ly);
-    }
-    lot = Math.floor(wc / ARCH_GAP);
-    lx = wc - lot * ARCH_GAP - 50;
-    if (lx >= 0 && lx <= ARCH_W && ly <= 8 && hash2(lot, 381) < 0.5 && midPlace(lot * ARCH_GAP + 60, t) === RALLY) {
-      if (lx === 0 || lx === ARCH_W) return (G_DPIPE << 7) | 2;
-      return ly >= 6 ? -1 : NOT_HERE;
     }
     lot = Math.floor(wc / 70);
     lx = wc - lot * 70 - 20;
@@ -1458,7 +1475,9 @@
     const bc = wc + Math.floor((t * 6) / cw);
     const bl = Math.floor(bc / 38);
     if (hash2(bl, 364) < 0.55) {
-      const base = 2 + ((hash2(bl, 365) * Math.max(1, sea - 6)) | 0);
+      // Sailboats keep out past the surf.
+      const near = Math.round(sea * 0.4);
+      const base = near + ((hash2(bl, 365) * Math.max(1, sea - 4 - near)) | 0);
       return spriteCell(SAILBOAT, bc - bl * 38 - 4 - ((hash2(bl, 366) * 20) | 0), ly - base, SAIL_COLOURS);
     }
     return NOT_HERE;
@@ -1486,17 +1505,423 @@
     return NOT_HERE;
   }
 
+  // ---------------------------------------------------------- transitions ---
+  // Where one place meets the next there is a set piece made for that pair,
+  // listed in TRANS under the place that ends. The road surface and the ground
+  // below the road change along a line fixed to the ground, so the line turns
+  // with the perspective as it passes.
+
+  const CLEAR = -4;
+  const TR = { from: 0, to: 0, bc: 0, d: 0 };
+
+  // The front-layer column where stretch j - 1 meets stretch j. The bridge
+  // starts and ends at a tower, so the points on either side of it snap to
+  // whole spans.
+  function meetCol(j) {
+    const X = (j - BLEND / 2) * BIOME_LEN;
+    const from = ORDER[mod(j - 1, NB)], to = ORDER[mod(j, NB)];
+    if (from === BRIDGE || to === BRIDGE) return Math.ceil(X / (SPAN * cw) - 0.5) * SPAN;
+    return Math.floor(X / cw);
+  }
+
+  // The meeting point nearest to front-layer column wc, written into TR, with
+  // wc's distance from it in columns.
+  function transitionNear(wc) {
+    const j = Math.round((wc * cw) / BIOME_LEN + BLEND / 2);
+    TR.from = ORDER[mod(j - 1, NB)];
+    TR.to = ORDER[mod(j, NB)];
+    TR.bc = meetCol(j);
+    TR.d = wc - TR.bc;
+    return TR;
+  }
+
+  // Whether front-layer column wc is inside the space kept for a set piece.
+  function inPiece(wc) {
+    const tr = transitionNear(wc);
+    const clear = TRANS[tr.from].clear;
+    return tr.d >= clear[0] && tr.d <= clear[1];
+  }
+
+  // Some set pieces are glyph art, given as rows of glyphs from the top and
+  // rows of colour keys to match. A "." key leaves the cell to whatever is behind, and
+  // a space in the glyph rows is an opaque blank. The key L is a window that is
+  // lit at night.
+  const ART_KEYS = {
+    K: 0, k: 1, m: 3, a: 7,
+    w: cr(PAPER, 0), n: cr(INKD, 0),
+    r: cr(ROCK, 0), R: cr(ROCK, 1), q: cr(ROCK, 2),
+    c: cr(CLAY, 0), C: cr(CLAY, 1),
+    s: cr(SLATE, 0), S: cr(SLATE, 1),
+    g: cr(LEAF, 0), G: cr(LEAF, 1),
+    x: cr(SNOW, 0),
+  };
+
+  function makeArt(rows, colours) {
+    const h = rows.length;
+    let w = 0;
+    for (let y = 0; y < h; y++) w = Math.max(w, Array.from(rows[y]).length);
+    const glyph = new Int16Array(w * h).fill(-2);
+    const key = new Array(w * h).fill("");
+    for (let y = 0; y < h; y++) {
+      const gr = Array.from(rows[y]);
+      for (let x = 0; x < w; x++) {
+        const k = colours[y][x] || ".";
+        const chr = gr[x] || " ";
+        if (k === ".") continue;
+        if (chr === " " || k === "_") glyph[y * w + x] = -1;
+        else {
+          glyph[y * w + x] = GI.has(chr) ? G(chr) : G("#");
+          key[y * w + x] = k;
+        }
+      }
+    }
+    return { w: w, h: h, glyph: glyph, key: key };
+  }
+
+  // The code for cell (lx, ly) of a piece of art whose bottom-left cell is (0, 0).
+  function artCell(art, lx, ly) {
+    if (lx < 0 || lx >= art.w || ly < 0 || ly >= art.h) return NOT_HERE;
+    const i = (art.h - 1 - ly) * art.w + lx;
+    const g = art.glyph[i];
+    if (g === -2) return NOT_HERE;
+    if (g === -1) return -1;
+    const k = art.key[i];
+    return (g << 7) | (k === "L" ? (env.night > 0.4 ? cr(WINDOW, 0) : cr(SKY, 1)) : ART_KEYS[k]);
+  }
+
+  const POST = makeArt(["│", "│", "│"], ["k", "k", "k"]);
+  const POST4 = makeArt(["│", "│", "│", "│"], ["k", "k", "k", "k"]);
+
+  // A fuel station with two pumps under a canopy and a kiosk beside it.
+  const FUEL = makeArt([
+    "  ┃                  ┃              ",
+    "  ┃   ▗▄▖      ▗▄▖   ┃   ▄▄▄▄▄▄▄▄▄▄ ",
+    "  ┃   ▐▪▌      ▐▪▌   ┃   │ ▪▪  ▪▪ │ ",
+    "  ┃   ▐█▌      ▐█▌   ┃   │ ▪▪  ▪▪ │ ",
+    "  ┃   ▐█▌      ▐█▌   ┃   │   ▓    │ ",
+    "▄▄┴▄▄▄███▄▄▄▄▄▄███▄▄▄┴▄▄ │   ▓    │ ",
+  ], [
+    "..S..................S..............",
+    "..S...aaa......aaa...S...cccccccccc.",
+    "..S...aLa......aLa...S...k_LL__LL_k.",
+    "..S...aaa......aaa...S...k_LL__LL_k.",
+    "..S...aaa......aaa...S...k___r____k.",
+    "qqSqqqaaaqqqqqqaaaqqqSqq.k___r____k.",
+  ]);
+
+  // The timing booth at the start of the rally stage.
+  const BOOTH = makeArt([
+    "▄▄▄▄▄▄▄",
+    "│▪▪▪▪▪│",
+    "│  ▓  │",
+    "│  ▓  │",
+  ], [
+    "ccccccc",
+    "kLLLLLk",
+    "k__r__k",
+    "k__r__k",
+  ]);
+
+  // A wayside cross at the edge of the village.
+  const CROSS = makeArt([
+    "  †  ",
+    " ▄█▄ ",
+    " ▐▓▌ ",
+    "  █  ",
+    "  █  ",
+    "  █  ",
+    " ▄█▄ ",
+  ], [
+    "..k..",
+    ".xxx.",
+    ".xcx.",
+    "..x..",
+    "..x..",
+    "..x..",
+    ".xxx.",
+  ]);
+
+  // A hunting stand on braced legs at the edge of the forest.
+  const STAND = makeArt([
+    " ▄▄▄▄▄ ",
+    "▟█████▙",
+    " │▪ ▪│ ",
+    " ├───┤ ",
+    " │╲ ╱│ ",
+    " │ ╳ │ ",
+    " │╱ ╲│ ",
+    " │╲ ╱│ ",
+    " │ ╳ │ ",
+    " │╱ ╲│ ",
+  ], [
+    ".rrrrr.",
+    "rrrrrrr",
+    ".rK_Kr.",
+    ".rrrrr.",
+    ".rR.Rr.",
+    ".r.R.r.",
+    ".rR.Rr.",
+    ".rR.Rr.",
+    ".r.R.r.",
+    ".rR.Rr.",
+  ]);
+
+  // The main cable comes down from the tower at each end of the bridge into a
+  // concrete anchorage on land.
+  function anchorSpan() {
+    return Math.max(12, bridgeHeight() - 3);
+  }
+
+  function anchorage(lx, ly) {
+    if (lx < 0 || lx > 7 || ly > 3) return NOT_HERE;
+    if (ly === 3) return lx === 0 || lx === 7 ? NOT_HERE : (G_ROCK_T << 7) | cr(SLATE, 1);
+    if (ly === 2 && (lx === 0 || lx === 7)) return ((lx === 0 ? G("▐") : G("▌")) << 7) | cr(SLATE, 1);
+    return (G_ROCK_M << 7) | cr(SLATE, 1);
+  }
+
+  function anchorIn(d, ly) {
+    const A = anchorSpan(), th = bridgeHeight();
+    const p = anchorage(d + A + 4, ly);
+    if (p !== NOT_HERE || d < -A || d > -1) return p;
+    const y0 = 3 + ((th - 3) * (d + A)) / A, y1 = 3 + ((th - 3) * (d + A + 1)) / A;
+    return ly >= Math.round(y0) && ly <= Math.round(y1) ? (G_SLASH << 7) | cr(CLAY, 0) : NOT_HERE;
+  }
+
+  function anchorOut(d, ly) {
+    const A = anchorSpan(), th = bridgeHeight();
+    const e = d - (LEGS - 1);
+    const p = anchorage(e - A + 3, ly);
+    if (p !== NOT_HERE || e < 1 || e > A) return p;
+    const y0 = th - ((th - 3) * (e - 1)) / A, y1 = th - ((th - 3) * e) / A;
+    return ly >= Math.round(y1) && ly <= Math.round(y0) ? (G_BACK << 7) | cr(CLAY, 0) : NOT_HERE;
+  }
+
+  // The rally stage starts and finishes under an arch, with a marshal beside
+  // it. At the finish the marshal waves the chequered flag.
+  const MARSHAL = { h: cr(SAND, 0), s: cr(WINDOW, 0), p: cr(SLATE, 0), k: 1 };
+  function marshal(d, ly, t, x0) {
+    return spriteCell(Math.floor(t * 2.5) % 2 === 0 ? PERSON_WAVE : PERSON, d - x0, ly, MARSHAL);
+  }
+
+  function stageArch(d, ly) {
+    if (d === -8 || d === 10) return ly <= 8 ? (G_DPIPE << 7) | 2 : NOT_HERE;
+    return d > -8 && d < 10 && ly >= 6 && ly <= 8 ? -1 : NOT_HERE;
+  }
+
+  function stageStart(d, ly, t) {
+    const p = stageArch(d, ly);
+    return p !== NOT_HERE ? p : marshal(d, ly, t, -13);
+  }
+
+  function stageFinish(d, ly, t) {
+    const p = stageArch(d, ly);
+    if (p !== NOT_HERE) return p;
+    if (ly >= 4 && ly <= 5 && d >= -16 && d <= -14) return ((Math.floor(t * 4) & 1 ? G_CHK_A : G_CHK_B) << 7) | 1;
+    return marshal(d, ly, t, -13);
+  }
+
+  // A big linden tree by the wayside cross.
+  function linden(d, ly) {
+    if (d === 17 && ly <= 3) return (G_ROCK_M << 7) | cr(ROCK, 0);
+    const dx = (d - 17) / 6.5, dy = (ly + 0.5 - 7) / 4;
+    const q = dx * dx + dy * dy;
+    return q < 1 ? (pick(S.canopy, hash2(d, ly + 930)) << 7) | cr(LEAF, q > 0.6 ? 1 : 0) : NOT_HERE;
+  }
+
+  // The road into the mountains runs through a cutting. The far wall of rock
+  // has pines on top, and the near side is rocky ground.
+  function rockHeight(d) {
+    if (d < -10 || d > 24) return -1;
+    return Math.round(9 * Math.pow(Math.sin((Math.PI * (d + 10.5)) / 35), 0.7) + (hash2(d, 911) - 0.5) * 2.5);
+  }
+
+  function rockCut(d, ly) {
+    const h = rockHeight(d);
+    if (h < 0 || ly > h + 1) return NOT_HERE;
+    if (ly === h + 1) return mod(d, 4) === 1 && hash2(d, 912) < 0.7 ? (G_TRI << 7) | cr(PINE, 0) : NOT_HERE;
+    const l = rockHeight(d - 1), r = rockHeight(d + 1);
+    if (ly === h) return ((l < h ? G_ROCK_L : r < h ? G_ROCK_R : G_ROCK_T) << 7) | cr(ROCK, 0);
+    if (ly > l) return (G("▐") << 7) | cr(ROCK, 0);
+    if (ly > r) return (G("▌") << 7) | cr(ROCK, 0);
+    return rockTexture(d, ly);
+  }
+
+  function rockTexture(d, ly) {
+    if (mod(ly + (d >> 3), 3) === 0) return (G_H << 7) | cr(ROCK, 1);
+    return hash2(d, ly + 913) < 0.55 ? (G_SHINGLE << 7) | cr(ROCK, 2) : -1;
+  }
+
+  // Red and white snow poles along the road up to the snow line.
+  function snowPoles(d, ly) {
+    if (ly > 3 || d < -36 || d > 36 || mod(d, 6) !== 0) return NOT_HERE;
+    return (G("▌") << 7) | (ly & 1 ? cr(PAPER, 0) : 7);
+  }
+
+  // A harbour crane with a container on its hook, and more containers on the
+  // quay, where the road comes down to the city.
+  function crane(d, ly) {
+    const Y = cr(WINDOW, 0);
+    if (ly === 16 && d >= -26 && d <= 3) return ((d === -12 ? G("╬") : G_HH) << 7) | Y;
+    if (ly === 17 && d === -12) return (G_TRI << 7) | Y;
+    if (ly === 15 && d >= -26 && d <= -23) return (G_ROCK_M << 7) | cr(SLATE, 1);
+    if (ly >= 1 && ly <= 15 && d >= -13 && d <= -11) return ((d === -12 ? G("╳") : G_PIPE) << 7) | Y;
+    if (ly === 14 && d === -15) return (G_ROCK_M << 7) | Y;
+    if (ly === 14 && d === -14) return (G_SMALL << 7) | (env.night > 0.4 ? cr(WINDOW, 0) : cr(SKY, 1));
+    if (ly === 0 && d >= -14 && d <= -10) return (G_ROCK_M << 7) | cr(SLATE, 0);
+    if (d === 0 && ly >= 10 && ly <= 15) return (G_PIPE << 7) | 3;
+    if (d === 0 && ly === 9) return (G("┘") << 7) | 3;
+    if (ly === 8 && d >= -3 && d <= 3) return (G_ROCK_M << 7) | 7;
+    if (ly <= 1 && d >= -9 && d <= -4) return (G_ROCK_M << 7) | (ly === 0 ? cr(WATER, 0) : 7);
+    if (ly === 0 && d >= -3 && d <= 1) return (G_ROCK_M << 7) | cr(LEAF, 1);
+    return NOT_HERE;
+  }
+
+  // What happens where each place ends. clear is the stretch around the
+  // meeting point, in columns, that other roadside objects keep out of. The
+  // road either changes at an expansion joint, at a chequered line, or over a
+  // few columns with a ragged edge. Below the road, land meets water at a
+  // rocky bank and other ground mixes along a slanted line.
+  const SIGN_WHITE = "#f2f1ed", SIGN_BLUE = "#1f4e9c", SIGN_BLACK = "#17181b";
+  const TRANS = [];
+  // The sign at the end of the town, and then the start of the motorway.
+  TRANS[CITY] = {
+    clear: [-16, 14],
+    arts: [[-9, POST], [9, POST]],
+    panels: [
+      { x: -15, y: 3, w: 13, h: 3, text: "LIBEREC", bg: SIGN_WHITE, fg: cr(INKD, 0), strike: true },
+      { x: 6, y: 3, w: 7, h: 3, text: "D10", bg: SIGN_BLUE },
+    ],
+    below: { shore: true, off: -2, slope: 0.9 },
+  };
+  // Onto the bridge past its first anchorage.
+  TRANS[HIGHWAY] = { clear: [-44, -1], near: anchorIn, road: "joint", below: { shore: true, off: -8, slope: -0.7 } };
+  // Off the bridge past the second anchorage, onto the coast.
+  TRANS[BRIDGE] = { clear: [LEGS, LEGS + 44], near: anchorOut, road: "joint", below: { shore: true, off: LEGS + 3, slope: 0.8 } };
+  // The last fuel station before the desert.
+  TRANS[SHORE] = {
+    clear: [-4, 40],
+    arts: [[2, FUEL]],
+    panels: [{ x: 2, y: 6, w: 24, h: 2, text: "FUEL · CAFÉ", bg: "accent" }],
+    below: { off: 0, slope: 0.6, w: 6 },
+  };
+  // The start of the rally stage.
+  TRANS[DESERT] = {
+    clear: [-15, 22],
+    near: stageStart,
+    arts: [[13, BOOTH]],
+    panels: [{ x: -7, y: 6, w: 17, h: 3, text: "★ RALLY START ★", bg: "accent" }],
+    road: "chequer",
+    below: { off: 0, slope: 0.5, w: 5 },
+  };
+  // The finish, and the stop board after it.
+  TRANS[RALLY] = {
+    clear: [-16, 26],
+    near: stageFinish,
+    arts: [[20, POST]],
+    panels: [
+      { x: -7, y: 6, w: 17, h: 3, text: "▚▞ FINISH ▚▞", bg: SIGN_BLACK },
+      { x: 18, y: 3, w: 6, h: 3, text: "STOP", bg: "accent" },
+    ],
+    road: "chequer",
+    below: { off: 0, slope: 0.5, w: 5 },
+  };
+  // Into the village past its name sign, a wayside cross and a linden tree.
+  TRANS[COUNTRY] = {
+    clear: [-15, 26],
+    near: linden,
+    arts: [[-9, POST], [3, CROSS]],
+    panels: [{ x: -15, y: 3, w: 12, h: 3, text: "LUČANY", bg: SIGN_WHITE, fg: cr(INKD, 0) }],
+    below: { off: -4, slope: 0.5, w: 6 },
+  };
+  // Out of the village and past a hunting stand into the forest.
+  TRANS[VILLAGE] = {
+    clear: [-15, 13],
+    arts: [[-9, POST], [4, STAND]],
+    panels: [{ x: -15, y: 3, w: 12, h: 3, text: "LUČANY", bg: SIGN_WHITE, fg: cr(INKD, 0), strike: true }],
+    below: { off: 0, slope: 0.5, w: 6 },
+  };
+  // Through a rock cutting into the mountains.
+  TRANS[FOREST] = { clear: [-12, 26], near: rockCut, below: { shore: true, off: 26, slope: 0.9, cut: true } };
+  // Up to the snow line, where the lake freezes over.
+  TRANS[MOUNTAINS] = {
+    clear: [2, 19],
+    near: snowPoles,
+    arts: [[10, POST4]],
+    panels: [{ x: 4, y: 4, w: 14, h: 3, text: "ZIMNÍ VÝBAVA", bg: SIGN_BLUE }],
+    below: { off: 0, slope: 0.3, w: 14 },
+  };
+  // Down to the harbour and back into the city, where the ice breaks up.
+  TRANS[WINTER] = {
+    clear: [-28, 19],
+    near: crane,
+    arts: [[13, POST]],
+    panels: [{ x: 7, y: 3, w: 13, h: 3, text: "LIBEREC", bg: SIGN_WHITE, fg: cr(INKD, 0) }],
+    below: { off: 0, slope: 0.3, w: 10 },
+  };
+
+  // The set piece at front-layer column wc, CLEAR where other objects keep
+  // out, or NOT_HERE.
+  function transitionPiece(wc, ly, t) {
+    const tr = transitionNear(wc);
+    if (tr.d < -48 || tr.d > 48) return NOT_HERE;
+    const d = tr.d;
+    const spec = TRANS[tr.from];
+    if (spec.near) {
+      const p = spec.near(d, ly, t);
+      if (p !== NOT_HERE) return p;
+    }
+    if (spec.arts) {
+      for (let i = 0; i < spec.arts.length; i++) {
+        const p = artCell(spec.arts[i][1], d - spec.arts[i][0], ly);
+        if (p !== NOT_HERE) return p;
+      }
+    }
+    return d >= spec.clear[0] && d <= spec.clear[1] ? CLEAR : NOT_HERE;
+  }
+
+  // The front-layer column that a ground row moving at v px/s shows at x.
+  // Rows nearer the viewer move faster, so a line on the ground turns about
+  // the middle of the screen as it passes.
+  function groundCol(x, t, v) {
+    const mid = vw * 0.5;
+    return Math.floor((mid + (x - mid) * (SPEED_NEAR / v) + t * SPEED_NEAR) / cw);
+  }
+
+  function isWater(p) {
+    return p === CITY || p === BRIDGE || p === MOUNTAINS;
+  }
+
   // ------------------------------------------------------------ road, water ---
 
-  // The road. Each row passes a little faster than the one behind it, and the
-  // surface changes where the place does, at a joint across the road.
+  // The road. The texture of each row passes a little faster than the row
+  // behind it. Where one place meets the next the surface changes straight
+  // across the road, at an expansion joint, at a chequered line, or over a few
+  // columns with a ragged edge.
   const ROAD_SPEED = [SPEED_NEAR, 42, 48, SPEED_ROAD];
   function roadCell(c, x, sy, t) {
     const ri = Math.floor((sy - L.roadTop) / ch);
-    const place = BB[c];
+    const v = ROAD_SPEED[ri];
+    const wg = Math.floor((x + t * SPEED_NEAR) / cw);
+    let place = placeAt(wg);
+    const tr = transitionNear(wg);
+    if (tr.d > -12 && tr.d < 12) {
+      const kind = TRANS[tr.from].road;
+      const side = ri === 0 || ri === 3;
+      if (kind === "joint") {
+        const at = tr.from === BRIDGE ? LEGS : 0;
+        if (tr.d === at) return ((side ? G("╪") : G_HPIPE) << 7) | (side ? 2 : 4);
+        place = tr.d < at ? tr.from : tr.to;
+      } else if (kind === "chequer" && (tr.d === 0 || tr.d === 1)) {
+        return (((tr.d + ri) & 1 ? G_CHK_A : G_CHK_B) << 7) | 1;
+      } else {
+        place = hash2(wg, ri + 610) < smooth(-5, 5, tr.d) ? tr.to : tr.from;
+      }
+    }
+    return roadSurface(place, ri, Math.floor((x + t * v) / cw));
+  }
+
+  function roadSurface(place, ri, wc) {
     const side = ri === 0 || ri === 3;
-    if (c > 0 && BB[c - 1] !== place) return ((side ? G_CROSS : G_PIPE) << 7) | (side ? 2 : 4);
-    const wc = Math.floor((x + t * ROAD_SPEED[ri]) / cw);
     const hv = hash2(wc, 88 + ri);
     switch (place) {
       case RALLY:
@@ -1523,11 +1948,7 @@
     switch (place) {
       case CITY: return ((mod(wc, 5) === 0 ? G_POST : G_HH) << 7) | 1;
       case SHORE: return ((mod(wc, 5) === 0 ? G_POST : G_H) << 7) | 2;
-      case BRIDGE: {
-        // The side of the deck moves with the towers.
-        const wn = Math.floor((x + t * SPEED_NEAR) / cw);
-        return (((wn & 1) ? G_SLASH : G_BACK) << 7) | cr(CLAY, 1);
-      }
+      case BRIDGE: return (((wc & 1) ? G_SLASH : G_BACK) << 7) | cr(CLAY, 1);
       case MOUNTAINS: return ((mod(wc, 4) === 0 ? G_DTEE : G_HH) << 7) | 2;
       case VILLAGE: return (G_OPEN << 7) | cr(ROCK, mod(wc, 3) === 0 ? 1 : 2);
       case DESERT: return hv < 0.3 ? (pick(S.base, hv * 3) << 7) | cr(SAND, 1) : -1;
@@ -1535,14 +1956,20 @@
     }
   }
 
-  // The sea: the skyline or the bridge mirrored in the water, pushed sideways
-  // by the waves and broken up more the further down it is, with swell in
-  // between. The bridge piers stand in the water under its towers.
+  // The sea in front of the road mirrors the skyline or the bridge. The
+  // waves push the reflection sideways and break it up more the further down
+  // it is, with swell in between. The bridge piers stand in the water under the
+  // towers, and their reflections shimmer below them.
   function seaCell(c, sr, x, sy, t, wi, fade) {
     if (wi === 0) return ((hash2(Math.floor((x + t * 6) / cw) >> 2, 5) < 0.8 ? G_H : G_DASH) << 7) | cr(WATER, 0);
-    if (wi <= 5) {
-      const wc = Math.floor((x + t * SPEED_NEAR) / cw);
-      if (mod(wc, SPAN) < LEGS && spanIsBridge(Math.floor(wc / SPAN))) return (G_DARK << 7) | cr(CLAY, 1);
+    const wn = Math.floor((x + t * SPEED_NEAR) / cw);
+    if (wi <= 9 && mod(wn, SPAN) < LEGS) {
+      const k = Math.floor(wn / SPAN);
+      if (spanIsBridge(k) || spanIsBridge(k - 1)) {
+        if (wi <= 5) return (G_DARK << 7) | cr(CLAY, 1);
+        const hv = hash3(c, sr, Math.floor(t * 3));
+        if (hv < (10 - wi) * 0.16) return (pick(S.reflect, hv) << 7) | cr(CLAY, 2);
+      }
     }
     const wob = Math.sin(t * 1.3 + wi * 0.9) * cw * (0.8 + wi * 0.15);
     const rb = nearBiomeAt(x + wob, t);
@@ -1651,10 +2078,59 @@
     return hv < 0.08 * fade ? (G_DOT << 7) | cr(SNOW, 1) : -1;
   }
 
+  // Each row below the road passes faster than the one above it.
+  function belowSpeed(wi) {
+    return SPEED_ROAD * (1 + wi * 0.07);
+  }
+
+  // The place a cell below the road shows. Near a meeting point the ground
+  // changes along a slanted line fixed to the ground. Where land meets water
+  // the line is a rocky bank with surf on the water side and pebbles on the
+  // land side. The bank codes are BANK_L and BANK_R for its end on the water
+  // side, BANK for the rest of it, and SURF and PEBBLE.
+  const BANK = -10, BANK_L = -11, BANK_R = -12, SURF = -13, PEBBLE = -14, ROCKY = -15;
+  function bankEdge(b, wi, bc) {
+    return b.off + Math.round(b.slope * wi + (hash2(wi, bc) - 0.5) * 2);
+  }
+
+  function belowPlace(x, wi, t) {
+    const wg = groundCol(x, t, belowSpeed(wi));
+    const tr = transitionNear(wg);
+    if (tr.d <= -40 || tr.d >= 40) return placeAt(wg);
+    const b = TRANS[tr.from].below;
+    if (b.cut && rockHeight(tr.d) > 0 && wi <= rockHeight(tr.d) >> 1) return ROCKY;
+    const e0 = bankEdge(b, wi, tr.bc);
+    if (!b.shore) return hash2(wg, wi + 620) < smooth(-b.w, b.w, tr.d - e0) ? tr.to : tr.from;
+    // The bank reaches over to where the next row's edge falls, in this row's
+    // columns, so it has no gaps.
+    const mid = vw * 0.5;
+    const xg = (tr.bc + bankEdge(b, wi + 1, tr.bc)) * cw - t * SPEED_NEAR;
+    const xs = mid + ((xg - mid) * belowSpeed(wi + 1)) / SPEED_NEAR;
+    const e1 = Math.round((mid + ((xs - mid) * SPEED_NEAR) / belowSpeed(wi) + t * SPEED_NEAR) / cw) - tr.bc;
+    const lo = Math.min(e0, e1), hi = Math.max(e0, e1);
+    const wetLeft = isWater(tr.from);
+    const d = tr.d;
+    if (d >= lo && d <= hi) {
+      if (d === (wetLeft ? lo : hi)) return wetLeft ? BANK_L : BANK_R;
+      return BANK;
+    }
+    const place = d < lo ? tr.from : tr.to;
+    if (d === (wetLeft ? lo - 1 : hi + 1)) return hash2(wg, wi + 630) < 0.7 ? SURF : place;
+    if (d === (wetLeft ? hi + 1 : lo - 1)) return hash2(wg, wi + 631) < 0.5 ? PEBBLE : place;
+    return place;
+  }
+
   function belowCell(c, sr, x, sy, t) {
     const wi = Math.floor((sy - L.waterTop) / ch);
     const fade = 1 - smooth(L.waterTop + ch * 5, L.groundEnd, sy);
-    switch (BB[c]) {
+    const place = belowPlace(x, wi, t);
+    switch (place) {
+      case BANK_L: return (G_ROCK_L << 7) | cr(ROCK, 1);
+      case BANK_R: return (G_ROCK_R << 7) | cr(ROCK, 1);
+      case BANK: return (G_ROCK_T << 7) | cr(ROCK, 1);
+      case ROCKY: return rockTexture(Math.floor(x / cw), wi);
+      case SURF: return ((hash2(Math.floor(t * 3), wi + Math.floor(x / cw)) < 0.5 ? G_TILDE : G_DASH) << 7) | cr(SNOW, 0);
+      case PEBBLE: return (pick(S.base, hash2(Math.floor(x / cw), wi)) << 7) | cr(ROCK, 2);
       case CITY:
       case BRIDGE: return seaCell(c, sr, x, sy, t, wi, fade);
       case HIGHWAY: return vergeCell(x, t, wi, fade);
@@ -1801,6 +2277,8 @@
     return Math.floor((sceneY - heroOff + frac) / ch);
   }
 
+  // Boats sail across the water in front of the city and the bridge, nearer
+  // than the bridge piers, and only where there is water under the whole hull.
   const BOAT = [" |\\", " |_\\", "\\___/"];
   function drawBoats(t, heroOff) {
     const gap = 560, speed = 20;
@@ -1809,9 +2287,12 @@
       if (hash2(k, 151) > 0.65) continue;
       const x = k * gap + hash2(k, 152) * 240 - t * speed;
       const col = Math.floor(x / cw);
-      const bc = Math.min(cols - 1, Math.max(0, col + 2));
-      if (BB[bc] !== CITY && BB[bc] !== BRIDGE) continue;
-      const r0 = screenRow(L.waterTop + ch * (4 + ((hash2(k, 153) * 4) | 0)), heroOff);
+      if (col < -6 || col > cols) continue;
+      const wi = 7 + ((hash2(k, 153) * 3) | 0);
+      let wet = true;
+      for (let i = -1; i <= 6 && wet; i += 7) wet = isWater(belowPlace((col + i + 0.5) * cw, wi, t));
+      if (!wet) continue;
+      const r0 = screenRow(L.waterTop + ch * (wi + 0.5), heroOff);
       for (let j = 0; j < BOAT.length; j++) {
         for (let i = 0; i < BOAT[j].length; i++) {
           if (BOAT[j][i] !== " ") putCell(col + i, r0 - 2 + j, (G(BOAT[j][i]) << 7) | (j === 2 ? cr(CLAY, 0) : 1));
@@ -1951,7 +2432,7 @@
     for (let lot = Math.floor((shift - 12) / LOT_NEAR); lot <= Math.floor((shift + cols) / LOT_NEAR); lot++) {
       if (hash2(lot, 341) >= 0.55) continue;
       const c = lot * LOT_NEAR + 10 - shift;
-      if (c >= 0 && c < cols && NBI[c] === VILLAGE) puffs(c, 8, lot + 500, t, heroOff);
+      if (c >= 0 && c < cols && NBI[c] === VILLAGE && !inPiece(lot * LOT_NEAR + 10)) puffs(c, 8, lot + 500, t, heroOff);
     }
   }
 
@@ -1989,7 +2470,7 @@
       const c = w - shift;
       if (c < -12 || c >= cols) continue;
       const place = placeAt(w + 3);
-      if (place !== FOREST && place !== WINTER) continue;
+      if ((place !== FOREST && place !== WINTER) || inPiece(w) || inPiece(w + 6)) continue;
       if (day && h < 0.4) {
         const up = Math.floor(t / 2.5 + hash2(lot, 403) * 3) % 3 === 0;
         stamp(up ? DEER : DEER_GRAZE, c, rBase, DEER_COLOURS);
@@ -2033,127 +2514,188 @@
     }
   }
 
-  // Direction signs on the highway gantries and the banner on the rally arch.
+  // Direction signs on the highway gantries, and the signs and banners of the
+  // set pieces.
   const SIGNS = ["PRAHA 102 →", "LIBEREC 14 →", "JABLONEC 8 →", "BRNO 186 →"];
   const SIGN_GREEN = "#1d6b3c";
   function drawPanels(t, heroOff) {
     let shift = layerShift(t, SPEED_NEAR);
     for (let k = Math.floor((shift - GANTRY_W) / GANTRY_GAP); k <= Math.floor((shift + cols) / GANTRY_GAP); k++) {
       const g0 = k * GANTRY_GAP;
-      if (placeAt(g0 + (GANTRY_W >> 1)) !== HIGHWAY) continue;
+      if (!gantryAt(k)) continue;
       const text = SIGNS[(hash2(k, 431) * SIGNS.length) | 0];
-      panel(g0 + 2 - shift, GANTRY_W - 3, 9, text, SIGN_GREEN, heroOff);
+      panel(g0 + 2 - shift, GANTRY_W - 3, 9, 3, text, SIGN_GREEN, cr(PAPER, 0), heroOff, false, false);
     }
-    shift = layerShift(t, SPEED_MID);
-    for (let k = Math.floor((shift - 50 - ARCH_W) / ARCH_GAP); k <= Math.floor((shift + cols) / ARCH_GAP); k++) {
-      if (hash2(k, 381) >= 0.5 || midPlace(k * ARCH_GAP + 60, t) !== RALLY) continue;
-      panel(k * ARCH_GAP + 51 - shift, ARCH_W - 1, 6, "★ RALLY ★", colors.accent, heroOff);
-    }
-  }
-
-  // A panel three rows high with one line of text in the middle.
-  function panel(c0, w, ly0, text, bg, heroOff) {
-    const start = (w - text.length) >> 1;
-    for (let j = 0; j < 3; j++) {
-      const r = rowAbove(ly0 + j, heroOff);
-      for (let i = 0; i < w; i++) {
-        const ch1 = j === 1 ? text[i - start] : undefined;
-        putCellBg(c0 + i, r, ch1 && ch1 !== " " ? (G(ch1) << 7) | cr(PAPER, 0) : -1, bg);
+    const j0 = Math.round(((shift - 60) * cw) / BIOME_LEN + BLEND / 2);
+    const j1 = Math.round(((shift + cols + 60) * cw) / BIOME_LEN + BLEND / 2);
+    for (let j = j0; j <= j1; j++) {
+      const ps = TRANS[ORDER[mod(j - 1, NB)]].panels;
+      if (!ps) continue;
+      const bc = meetCol(j);
+      for (let i = 0; i < ps.length; i++) {
+        const p = ps[i];
+        const bg = p.bg === "accent" ? colors.accent : p.bg;
+        panel(bc + p.x - shift, p.w, p.y, p.h, p.text, bg, p.fg === undefined ? cr(PAPER, 0) : p.fg, heroOff, p.strike, bg === SIGN_WHITE);
       }
     }
   }
 
-  // Traffic in the far lane of the highway, which the rally car overtakes. A
-  // vehicle joins at the right edge while the highway is coming into view and
-  // carries on over the bridge and along the shore until it has left the
-  // screen, so none appears or vanishes in the middle of the road.
-  const TRAFFIC_SPEED = 22;
-  const TRAFFIC_EVERY = 9;
+  // A panel h rows high with one line of text in its middle row. A bordered
+  // panel is framed in dark ink, like a town sign. A struck panel has a red
+  // bar from corner to corner, like the sign at the end of a town, and the
+  // letters it crosses turn red.
+  function panel(c0, w, ly0, h, text, bg, fg, heroOff, strike, border) {
+    const start = (w - text.length) >> 1;
+    const mid = h >> 1;
+    const ink = cr(INKD, 0);
+    for (let j = 0; j < h; j++) {
+      const r = rowAbove(ly0 + j, heroOff);
+      for (let i = 0; i < w; i++) {
+        const chr = j === mid ? text[i - start] : undefined;
+        const onBar = strike && Math.min(h - 1, Math.floor((i * h) / w)) === j;
+        let code = -1;
+        if (chr && chr !== " ") code = (G(chr) << 7) | (onBar ? 7 : fg);
+        else if (onBar) code = (G("╱") << 7) | 7;
+        else if (border) {
+          const top = j === h - 1, bottom = j === 0, left = i === 0, right = i === w - 1;
+          if (top || bottom) code = ((left ? (top ? G_TL : G("└")) : right ? (top ? G_TR : G("┘")) : G_H) << 7) | ink;
+          else if (left || right) code = (G_PIPE << 7) | ink;
+        }
+        putCellBg(c0 + i, r, code, bg);
+      }
+    }
+  }
+
+  // Traffic in the far lane of the highway and over the bridge, which the
+  // rally car overtakes. Vehicles are drawn to the car's scale, ten sprite
+  // pixels to the metre, with slightly smaller pixels because the lane is
+  // further away. A vehicle joins at the right edge and carries on until it
+  // has left the screen, so none appears or vanishes in the middle of the road.
+  const TRAFFIC_SPEED = 24;
+
+  // A vehicle in sprite pixels. Each shape is [key, y0, y1, left at y0, left
+  // at y1, right at y0, right at y1]. The body is outlined, then windows and
+  // lights go on top, then the wheels with their arches.
+  function vehicleRows(W, H, body, details, wheels) {
+    const g = [];
+    for (let y = 0; y < H; y++) g.push(new Array(W).fill("."));
+    function shape(s) {
+      for (let y = s[1]; y <= s[2]; y++) {
+        const f = s[2] === s[1] ? 0 : (y - s[1]) / (s[2] - s[1]);
+        const xl = Math.round(s[3] + (s[4] - s[3]) * f), xr = Math.round(s[5] + (s[6] - s[5]) * f);
+        for (let x = Math.max(0, xl); x <= Math.min(W - 1, xr); x++) if (y >= 0 && y < H) g[y][x] = s[0];
+      }
+    }
+    body.forEach(shape);
+    const edge = [];
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        if (g[y][x] === ".") continue;
+        if (y === 0 || x === 0 || y === H - 1 || x === W - 1 || g[y - 1][x] === "." || g[y + 1][x] === "." || g[y][x - 1] === "." || g[y][x + 1] === ".") edge.push(y * W + x);
+      }
+    }
+    edge.forEach(function (i) { g[(i / W) | 0][i % W] = "k"; });
+    details.forEach(shape);
+    wheels.forEach(function (wh) {
+      const cx = wh[0], r = wh[1], cy = H - r;
+      for (let y = Math.floor(cy - r - 2); y < H; y++) {
+        for (let x = Math.floor(cx - r - 2); x <= cx + r + 2; x++) {
+          if (x < 0 || x >= W || y < 0) continue;
+          const dd = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
+          if (dd <= r) g[y][x] = dd <= r * 0.42 ? "s" : "k";
+          else if (dd <= r + 1.2 && y + 0.5 < cy && g[y][x] !== ".") g[y][x] = "d";
+        }
+      }
+    });
+    return g.map(function (row) { return row.join(""); });
+  }
+
   const VEHICLES = [
-    [
-      "....kkkkkkkk........",
-      "...kbGggkgggbk......",
-      "..kbGgggkggggbbk....",
-      "kkbbbbbbbbbbbbbbbkk.",
-      "tbbbbbbbbbbbbbbbbbhk",
-      "kbbbbbbbbbbbbbbbbbbk",
-      "kkkkkkkkkkkkkkkkkkkk",
-      "..kssk.......kssk...",
-      "..kkkk.......kkkk...",
-    ],
-    [
-      "kkkkkkkkkkkkkkkkk.....",
-      "kbbbbbbbbbbbbbkggk....",
-      "kbbbbbbbbbbbbbkgggk...",
-      "kbbbbbbbbbbbbbkggggk..",
-      "kbbbbbbbbbbbbbbbbbbbkk",
-      "tbbbbbbbbbbbbbbbbbbbbh",
-      "kbbbbbbbbbbbbbbbbbbbbk",
-      "kkkkkkkkkkkkkkkkkkkkkk",
-      "..kssk..........kssk..",
-      "..kkkk..........kkkk..",
-    ],
-    [
-      "kkkkkkkkkkkkkkkkkkkkkkkk..kkkkkk....",
-      "kwwwwwwwwwwwwwwwwwwwwwwk..kbbbbkk...",
-      "kwwwwwwwwwwwwwwwwwwwwwwk..kbbbGggk..",
-      "kwwwwwwwwwwwwwwwwwwwwwwk..kbbbGgggk.",
-      "kwwwwwwwwwwwwwwwwwwwwwwk..kbbbbbbbbk",
-      "kwwwwwwwwwwwwwwwwwwwwwwkkkkbbbbbbbbh",
-      "twwwwwwwwwwwwwwwwwwwwwwk..kbbbbbbbbk",
-      "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
-      "..kssk.kssk.........kssk.....kssk...",
-      "..kkkk.kkkk.........kkkk.....kkkk...",
-    ],
-    [
-      "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk.",
-      "kbggkggkggkggkggkggkggkggkgggGbk",
-      "kbggkggkggkggkggkggkggkggkggggGk",
-      "kbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbk",
-      "kwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwk",
-      "tbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbh",
-      "kbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbk",
-      "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
-      "..kssk...................kssk...",
-      "..kkkk...................kkkk...",
-    ],
+    // A hatchback.
+    { weight: 3, rows: vehicleRows(42, 15,
+      [["b", 5, 11, 1, 0, 40, 41], ["b", 0, 4, 9, 6, 26, 35], ["B", 10, 11, 0, 0, 41, 41]],
+      [["g", 1, 4, 10, 8, 17, 17], ["g", 1, 4, 20, 20, 27, 33], ["G", 1, 1, 21, 21, 24, 24], ["t", 6, 7, 0, 0, 1, 1], ["h", 6, 7, 40, 40, 41, 41]],
+      [[8.5, 3.5], [33.5, 3.5]]) },
+    // A saloon.
+    { weight: 3, rows: vehicleRows(48, 15,
+      [["b", 5, 11, 1, 0, 46, 47], ["b", 0, 4, 14, 9, 30, 38], ["B", 10, 11, 0, 0, 47, 47]],
+      [["g", 1, 4, 14, 11, 21, 21], ["g", 1, 4, 24, 24, 31, 36], ["G", 1, 1, 25, 25, 28, 28], ["t", 6, 7, 0, 0, 1, 1], ["h", 6, 7, 46, 46, 47, 47]],
+      [[10.5, 3.5], [38.5, 3.5]]) },
+    // A van.
+    { weight: 2, rows: vehicleRows(58, 25,
+      [["b", 0, 9, 1, 0, 48, 57], ["b", 10, 20, 0, 0, 57, 57], ["B", 18, 20, 0, 0, 57, 57]],
+      [["g", 2, 8, 42, 42, 49, 54], ["G", 2, 2, 43, 43, 46, 46], ["d", 4, 17, 38, 38, 38, 38], ["t", 10, 13, 0, 0, 1, 1], ["h", 11, 12, 56, 56, 57, 57]],
+      [[11.5, 4.5], [46.5, 4.5]]) },
+    // A box truck.
+    { weight: 1.5, rows: vehicleRows(86, 34,
+      [["w", 0, 26, 0, 0, 61, 61], ["b", 7, 14, 64, 64, 80, 85], ["b", 15, 27, 64, 64, 85, 85], ["d", 27, 29, 0, 0, 85, 85]],
+      [["b", 20, 22, 1, 1, 60, 60], ["g", 9, 15, 67, 67, 76, 78], ["g", 9, 14, 81, 82, 82, 84], ["t", 23, 25, 0, 0, 1, 1], ["h", 21, 23, 84, 84, 85, 85]],
+      [[12.5, 5], [24.5, 5], [73.5, 5]]) },
+    // A coach.
+    { weight: 1, rows: vehicleRows(120, 34,
+      [["b", 0, 2, 3, 1, 116, 118], ["b", 3, 29, 0, 0, 119, 119], ["B", 25, 29, 0, 0, 119, 119]],
+      [["g", 4, 13, 5, 5, 15, 15], ["g", 4, 13, 18, 18, 28, 28], ["g", 4, 13, 31, 31, 41, 41], ["g", 4, 13, 44, 44, 54, 54],
+       ["g", 4, 13, 57, 57, 67, 67], ["g", 4, 13, 70, 70, 80, 80], ["g", 4, 13, 83, 83, 93, 93], ["G", 4, 4, 5, 5, 93, 93],
+       ["g", 5, 26, 102, 102, 109, 109], ["d", 5, 26, 105, 105, 105, 105], ["g", 3, 16, 113, 113, 118, 118],
+       ["y", 1, 2, 104, 104, 115, 115], ["w", 17, 18, 1, 1, 100, 100], ["t", 20, 23, 0, 0, 1, 1], ["h", 21, 23, 118, 118, 119, 119]],
+      [[22.5, 5], [92.5, 5]]) },
+    // An articulated lorry.
+    { weight: 1, rows: vehicleRows(164, 40,
+      [["w", 0, 30, 0, 0, 117, 117], ["d", 31, 32, 0, 0, 117, 117], ["b", 4, 12, 124, 124, 156, 163], ["b", 13, 33, 124, 124, 163, 163], ["d", 33, 34, 118, 118, 163, 163]],
+      [["b", 24, 25, 1, 1, 116, 116], ["g", 8, 15, 146, 146, 154, 156], ["g", 6, 16, 157, 159, 159, 162], ["s", 27, 31, 128, 128, 140, 140],
+       ["d", 0, 10, 143, 143, 143, 143], ["t", 27, 29, 0, 0, 1, 1], ["h", 27, 29, 162, 162, 163, 163]],
+      [[12.5, 5.5], [25.5, 5.5], [38.5, 5.5], [133.5, 5.5], [153.5, 5.5]]) },
   ];
-  const BODY_COLOURS = ["#2f6fb0", "#e0a526", "#4f8a4b", "#8a8f99", "#ece9e2", "#6a4fa0", "#1f7f86", "#23262b"];
+  const VEHICLE_WEIGHT = VEHICLES.reduce(function (s, v) { return s + v.weight; }, 0);
+  function pickVehicle(h) {
+    let a = h * VEHICLE_WEIGHT;
+    for (let i = 0; i < VEHICLES.length; i++) {
+      a -= VEHICLES[i].weight;
+      if (a < 0) return VEHICLES[i];
+    }
+    return VEHICLES[0];
+  }
+
+  const BODY_COLOURS = ["#2f6fb0", "#e0a526", "#4f8a4b", "#8a8f99", "#ece9e2", "#6a4fa0", "#1f7f86", "#23262b", "#b8452f"];
   function drawTraffic(t, heroOff, heroFade) {
-    const P = Math.max(2, car.p - 1);
+    const P = Math.max(1, Math.round(car.p * 0.8));
     const pD = Math.max(1, Math.round(P * dpr));
     const bottom = L.roadTop + ch * 1.35 - heroOff;
     const cycle = NB * BIOME_LEN;
-    const stretch = BIOME_LEN / SPEED_NEAR;
+    // Vehicles join while the highway and the bridge come into view.
+    const joining = (2 * BIOME_LEN) / SPEED_NEAR - 10;
     const night = env.night > 0.35;
     const m1 = Math.floor((t * SPEED_NEAR + vw) / cycle) + 1;
     for (let m = m1 - 2; m <= m1; m++) {
-      // When the start of this lap's highway reaches the right edge.
       const t0 = ((m * NB + ORDER.indexOf(HIGHWAY) - BLEND / 2) * BIOME_LEN - vw) / SPEED_NEAR;
-      for (let j = 0; j * TRAFFIC_EVERY < stretch; j++) {
+      let te = t0 + hash2(m, 425) * 4;
+      for (let j = 0; te <= t0 + joining && te <= t; j++) {
         const id = m * 31 + j;
-        if (hash2(id, 421) > 0.75) continue;
-        const te = t0 + (j + hash2(id, 422) * 0.25) * TRAFFIC_EVERY;
-        if (te > t || te > t0 + stretch) continue;
-        const v = VEHICLES[(hash2(id, 423) * VEHICLES.length) | 0];
+        const v = pickVehicle(hash2(id, 423));
+        const spr = v.rows;
+        const w = spr[0].length * P, h = spr.length * P;
         const x = vw + 4 - (t - te) * TRAFFIC_SPEED;
-        const w = v[0].length * P, h = v.length * P;
+        te += (w + 180 + hash2(id, 426) * 420) / TRAFFIC_SPEED;
         if (x + w < 0 || x > vw) continue;
-        const y = bottom - h;
+        const body = BODY_COLOURS[(hash2(id, 424) * BODY_COLOURS.length) | 0];
         const pal = {
           k: "#141518",
-          b: BODY_COLOURS[(hash2(id, 424) * BODY_COLOURS.length) | 0],
+          b: body,
+          B: shade(body, 0.78),
           w: "#e9e7e1",
+          d: "#2f3136",
           g: "#5b7390",
           G: "#b9d0e6",
           s: "#c8ccd2",
+          y: "#ffb300",
           t: night ? "#ff5a45" : "#c8352b",
           h: night ? "#ffd34d" : "#fff3c4",
         };
+        const y = bottom - h;
         const c0 = Math.max(0, Math.floor(x / cw)), c1 = Math.min(cols - 1, Math.ceil((x + w) / cw));
         const r0 = Math.max(0, Math.floor((y + frac) / ch)), r1 = Math.min(rows - 1, Math.ceil((y + h + frac) / ch));
         for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) prevCode[r * cols + c] = -9;
-        paintSprite(v, Math.round(x * dpr), Math.round(y * dpr), pD, heroFade, id, pal);
+        paintSprite(spr, Math.round(x * dpr), Math.round(y * dpr), pD, heroFade, id, pal);
       }
     }
   }
