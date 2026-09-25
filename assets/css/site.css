@@ -22,8 +22,9 @@
 
 /* Colours follow Grimstat: warm greys, hairline borders and a red accent.
    --accent is the one colour on the page, and the background picks it up too.
-   --line is for borders, --soft for hover fills, --panel for cards and
-   buttons, and --bar for the top bar. */
+   --line is for hairlines, --soft for hover fills, --panel for cards and
+   buttons, and --bar for the top bar. Panels have an --edge and cast a hard
+   --drop shadow so they stand off the moving background. */
 :root {
   --bg: #fbfaf8;
   --fg: #17181b;
@@ -32,6 +33,8 @@
   --soft: #efeeea;
   --panel: #ffffff;
   --bar: #f5f4f0;
+  --edge: #17181b;
+  --drop: #d9d6cf;
   --accent: #c8352b;
   --accent-ink: #c8352b;
   --on-accent: #fbfaf8;
@@ -50,6 +53,8 @@
     --soft: #212227;
     --panel: #18191c;
     --bar: #18191c;
+    --edge: #4a4b52;
+    --drop: #2c2d33;
     --accent: #dc665e;
     --accent-ink: #e8776e;
     --on-accent: #131417;
@@ -64,6 +69,8 @@
   --soft: #212227;
   --panel: #18191c;
   --bar: #18191c;
+  --edge: #4a4b52;
+  --drop: #2c2d33;
   --accent: #dc665e;
   --accent-ink: #e8776e;
   --on-accent: #131417;
@@ -114,15 +121,21 @@ a:hover { color: var(--accent-ink); }
 
 p, h1, h2, h3, h4 { margin: 0; }
 
-/* The field clears a ragged margin around every .ko element, so text sits
-   straight on the scene without a box behind it. Components with a border
-   (the top bar, buttons, cards and the globe) carry their own background. */
+/* The field clears a ragged margin around every .ko element. Text that is
+   not on a panel sits on strips of the page colour instead, cut to each
+   line. */
 
-/* On the light theme the night darkens the scene behind the hero, and the
-   field sets data-scene="dark" while it does, so the hero text turns light. */
-.hero { transition: color 1.2s ease; }
-html[data-scene="dark"] .hero { color: var(--bg); }
-html[data-scene="dark"] .hero .btn-solid { border-color: var(--bg); }
+/* Cards, the skills grid, the timeline and the contact block are panels. */
+.card,
+.skills,
+.block,
+.more,
+.contact-main,
+.globe-fig {
+  border: 1px solid var(--edge);
+  background: var(--panel);
+  box-shadow: 5px 5px 0 var(--drop);
+}
 
 .wrap {
   width: 100%;
@@ -152,7 +165,6 @@ html[data-scene="dark"] .hero .btn-solid { border-color: var(--bg); }
 .kicker,
 .subhead,
 .card-meta,
-.fig figcaption,
 .tl-date,
 .skill h3,
 .contact-list dt,
@@ -281,31 +293,47 @@ html[data-scene="dark"] .hero .btn-solid { border-color: var(--bg); }
   gap: clamp(14px, 2.4vh, 22px);
 }
 
+/* The hero text sits on strips of the page colour, and the scene stays
+   visible around them. The eyebrow is a red tag and the name casts a hard red
+   shadow. Each line of the intro gets its own strip, with a red rule down the
+   left edge. */
 .eyebrow {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   width: fit-content;
-  padding: 4px 8px 4px 0;
+  padding: 7px 12px 6px 10px;
+  background: var(--accent);
+  color: var(--on-accent);
   font: 16.5px/1.3 var(--mono);
 }
-.eyebrow { flex-wrap: nowrap; align-items: flex-start; }
 .sq { flex: none; width: 11px; height: 11px; margin-top: 0.2em; background: var(--accent); }
+.eyebrow .sq { background: var(--on-accent); }
 
 .name {
-  width: fit-content;
   font: 400 clamp(40px, min(11.5vw, 15vh), 143px)/0.92 var(--mono);
   letter-spacing: 0;
-  padding: 4px 8px 8px 0;
+  margin: 0.04em 0 0.1em;
 }
-.name .line { display: block; }
+.name .line {
+  display: block;
+  width: fit-content;
+  padding: 0.06em 0.14em 0.1em;
+  background: var(--bg);
+  box-shadow: 0.07em 0.07em 0 var(--accent);
+}
 
 .lede {
   max-width: 58ch;
   font-size: clamp(17px, 1.55vw, 20px);
-  line-height: 1.55;
-  padding: 4px 8px 4px 0;
+  line-height: 1.6;
+}
+.lede .hl {
+  padding: 0.3em 0.6em 0.3em 0.7em;
+  background: var(--bg);
+  box-shadow: inset 3px 0 0 var(--accent);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
 }
 
 .actions { display: flex; flex-wrap: wrap; gap: 10px; }
@@ -315,8 +343,9 @@ html[data-scene="dark"] .hero .btn-solid { border-color: var(--bg); }
   gap: 10px;
   height: 46px;
   padding: 0 16px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--edge);
   background: var(--panel);
+  box-shadow: 3px 3px 0 var(--drop);
   color: var(--fg);
   font: 16.5px/1 var(--mono);
   text-decoration: none;
@@ -346,7 +375,13 @@ html[data-scene="dark"] .hero .btn-solid { border-color: var(--bg); }
   background-size: 4px 1px;
   opacity: 0.6;
 }
-h2 { font: 400 clamp(33px, 5vw, 55px)/1 var(--mono); }
+h2 {
+  width: fit-content;
+  padding: 0.08em 0.18em 0.12em;
+  background: var(--bg);
+  box-shadow: 0.1em 0.1em 0 var(--accent);
+  font: 400 clamp(33px, 5vw, 55px)/1 var(--mono);
+}
 
 .subhead {
   display: flex;
@@ -356,8 +391,9 @@ h2 { font: 400 clamp(33px, 5vw, 55px)/1 var(--mono); }
   padding: 6px 0;
 }
 .subhead .n { color: var(--fg); }
-.block .subhead { margin-top: 0; padding-top: 22px; }
-.block + .block { margin-top: 48px; }
+.block { padding: 0 24px 6px; }
+.block .subhead { margin-top: 0; padding-top: 18px; }
+.block + .block { margin-top: 40px; }
 
 /* -------------------------------------------------------------------- cards */
 
@@ -374,11 +410,9 @@ h2 { font: 400 clamp(33px, 5vw, 55px)/1 var(--mono); }
   display: flex;
   flex-direction: column;
   min-width: 0;
-  border: 1px solid var(--line);
-  background: var(--panel);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
-.card:hover { transform: translate(-3px, -3px); box-shadow: 6px 6px 0 var(--accent); }
+.card:hover { transform: translate(-3px, -3px); box-shadow: 8px 8px 0 var(--accent); }
 
 /* A card that spans the grid puts its figure beside the text. */
 @media (min-width: 881px) {
@@ -396,25 +430,17 @@ h2 { font: 400 clamp(33px, 5vw, 55px)/1 var(--mono); }
   .card.wide .plot { flex: 1; height: auto; min-height: 140px; }
 }
 
-/* Figures are framed like plots: dotted grid columns behind the drawing and a
-   caption underneath. */
+/* Figures are framed like plots, with dotted grid columns behind the
+   drawing. */
 .fig {
   margin: 0;
-  padding: 14px 14px 10px;
+  padding: 14px;
   border-bottom: 1px solid var(--line);
   background-image:
     linear-gradient(var(--panel) 50%, transparent 50%),
     linear-gradient(90deg, var(--line) 1px, transparent 1px);
   background-size: 100% 4px, 42px 100%;
   background-position: 0 0, 13px 0;
-}
-.fig figcaption {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 10px;
-  padding-top: 8px;
-  border-top: 1px solid var(--line);
 }
 /* A figure fills the width it is given and never widens its card, so it
    redraws to fit after a resize or a rotation. */
@@ -481,9 +507,8 @@ h2 { font: 400 clamp(33px, 5vw, 55px)/1 var(--mono); }
 
 .more {
   margin: 0;
-  padding: 0;
+  padding: 0 24px;
   list-style: none;
-  border-top: 1px solid var(--line);
 }
 .more li {
   display: grid;
@@ -491,8 +516,9 @@ h2 { font: 400 clamp(33px, 5vw, 55px)/1 var(--mono); }
   gap: 8px 28px;
   align-items: baseline;
   padding: 20px 0;
-  border-bottom: 1px solid var(--line);
+  border-top: 1px solid var(--line);
 }
+.more li:first-child { border-top: 0; }
 .more-name { font: 400 22px/1.2 var(--mono); }
 .more-name a { text-decoration: none; }
 .more-name a:hover { text-decoration: underline; }
@@ -529,6 +555,8 @@ h2 { font: 400 clamp(33px, 5vw, 55px)/1 var(--mono); }
 }
 @media (max-width: 640px) {
   .tl-item { grid-template-columns: 1fr; }
+  .block, .more { padding-left: 16px; padding-right: 16px; }
+  .contact-main { padding: 18px 16px 8px; }
 }
 
 /* ------------------------------------------------------------------- skills */
@@ -537,7 +565,6 @@ h2 { font: 400 clamp(33px, 5vw, 55px)/1 var(--mono); }
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1px;
-  border: 1px solid var(--line);
   background: var(--line);
 }
 .skill { padding: 20px 20px 22px; background: var(--panel); }
@@ -558,7 +585,7 @@ h2 { font: 400 clamp(33px, 5vw, 55px)/1 var(--mono); }
   gap: 40px;
   align-items: start;
 }
-.contact-main { padding: 6px 12px 12px 0; }
+.contact-main { padding: 24px 24px 12px; }
 .contact-main .section-head { padding: 0; }
 .mail-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
 .big-mail {
@@ -592,7 +619,7 @@ h2 { font: 400 clamp(33px, 5vw, 55px)/1 var(--mono); }
 .contact-list dt { line-height: 2; }
 .contact-list dd { margin: 0; }
 
-.globe-fig { min-width: 0; border: 1px solid var(--line); background-color: var(--panel); }
+.globe-fig { min-width: 0; }
 .globe-fig .plot { height: 322px; }
 
 @media (max-width: 860px) {

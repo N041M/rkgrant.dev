@@ -9,11 +9,11 @@
 
   const META = {
     en: {
-      title: "Ronald Karel Grant · Developer and Data Science student",
+      title: "R. K. Grant · Developer and Data Science student",
       description: "Portfolio of Ronald Karel Grant, a developer and Data Science student from Jablonec nad Nisou who works on NLP research, AI agent systems, full-stack apps and developer tools.",
     },
     cs: {
-      title: "Ronald Karel Grant · Vývojář a student Data Science",
+      title: "R. K. Grant · Vývojář a student Data Science",
       description: "Portfolio Ronalda Karla Granta, vývojáře a studenta Data Science z Jablonce nad Nisou, který se věnuje výzkumu s NLP, agentním systémům s AI, full-stack aplikacím a vývojářským nástrojům.",
     },
   };
