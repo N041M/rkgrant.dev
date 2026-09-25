@@ -241,16 +241,15 @@
 
   // The drive. Each layer drifts past at its own speed in px/s, and every
   // BIOME_LEN px of the front layer the road reaches the next place. The
-  // slower layers change over at the same moment, so distant scenery arrives
-  // first and the foreground follows.
+  // change from one place to the next is a boundary that sweeps across the
+  // screen at the front layer's speed, and every layer changes as it passes,
+  // so the distance never shows a place the road has not reached yet.
   const SPEED_HILLS = 8;
   const SPEED_MID = 16;
   const SPEED_NEAR = 30;
   const SPEED_ROAD = 54;
   const BIOME_LEN = 1300;
   const BLEND = 0.2;
-  const LEN_MID = (BIOME_LEN * SPEED_MID) / SPEED_NEAR;
-  const LEN_HILLS = (BIOME_LEN * SPEED_HILLS) / SPEED_NEAR;
   const CITY = 0, BRIDGE = 1, COUNTRY = 2, MOUNTAINS = 3, DESERT = 4, FOREST = 5, NB = 6;
   const LOT_NEAR = 14;
   const LOT_MID = 9;
@@ -294,7 +293,7 @@
   let raf = 0, lastDraw = 0, lastT = 0, lastScroll = -1;
   const pulses = [];
   const dust = [];
-  let lastDust = 0;
+  let lastDust = 0, lastPuff = 0;
   const L = { H: 0, cloudBase: 0, cityH: 0, farCityH: 0, roadTop: 0, waterTop: 0, groundEnd: 0 };
   const env = { day: 1, night: 0, dusk: 0, wDay: 1, wDusk: 0, wNight: 0, sunX: 0, sunY: 0, sunR: 0, moonX: 0, moonY: 0, moonR: 0 };
   const skyTop = [0, 0, 0], skyHorizon = [0, 0, 0], skyGround = [0, 0, 0];
@@ -560,24 +559,27 @@
   function computeColumns(t) {
     for (let c = 0; c < cols; c++) {
       const x = (c + 0.5) * cw;
-      const wh = x + t * SPEED_HILLS;
-      const b = wh / LEN_HILLS;
+      // Which place this column shows is decided in front-layer terms. The
+      // hills keep their own, slower drift for their shape.
+      const wn = x + t * SPEED_NEAR;
+      const b = wn / BIOME_LEN;
       const i = Math.floor(b);
       const w = smooth(1 - BLEND, 1, b - i);
-      const u = wh / 520;
+      const u = (x + t * SPEED_HILLS) / 520;
       let h = terrainHeight(mod(i, NB), u);
       let tb = mod(i, NB);
       if (w > 0) {
         h += (terrainHeight(mod(i + 1, NB), u) - h) * w;
-        if (hash2(Math.floor(wh / (cw * 3)), 5) < w) tb = mod(i + 1, NB);
+        if (hash2(Math.floor(wn / (cw * 3)), 5) < w) tb = mod(i + 1, NB);
       }
       HF[c] = L.roadTop - h;
       HB[c] = tb;
-      const wn = x + t * SPEED_NEAR;
       BB[c] = biomeAt(wn, BIOME_LEN, Math.floor(wn / cw), 51);
       NBI[c] = nearBiomeAt(x, t);
+      // A middle-layer object takes the place its centre is in right now.
       const mlot = Math.floor(Math.floor((x + t * SPEED_MID) / cw) / LOT_MID);
-      MBI[c] = biomeAt((mlot + 0.5) * LOT_MID * cw, LEN_MID, mlot, 31);
+      const lotX = (mlot + 0.5) * LOT_MID * cw - t * SPEED_MID;
+      MBI[c] = biomeAt(lotX + t * SPEED_NEAR, BIOME_LEN, mlot, 31);
     }
   }
 
@@ -1396,29 +1398,44 @@
 
   // ------------------------------------------------------------------ car ---
 
-  // A small rally hatchback facing right. k = ink, a = accent, w = paper,
-  // g = glass, h = headlights. The wheels are drawn separately so they can
-  // turn.
+  // A rally hatchback facing right: red with a white and navy stripe, a door
+  // number, a rear wing, a light pod on the bonnet and a driver in a white
+  // helmet. The wheels are drawn separately so their spokes can turn.
+  // k outline, d trim, r body, R lower body, w white, b navy, g glass,
+  // G glass highlight, y light pod, t tail lights, h headlights, Y gold rims,
+  // s silver spokes.
   const CAR = [
-    "........kkkkkkkkkkkkkk............",
-    ".kkkk..kaaaaaaaaaaaaaak...........",
-    ".kaak.kggggkgggggggggggk..........",
-    ".kaaakggggkggggggggggggak.........",
-    ".kaaakggggkgggggggggggggakkkkkkk..",
-    ".kaaaaaaaaaaaaaaaaaaaaaaaaaaaaaakk",
-    ".kaaaaaaaaawwwwwaaaaaaaaaaaaaaaahh",
-    ".kaaaaaaaawwkkkwwaaaaaaaaaaaaaaaak",
-    ".kaaaaaaaawwwkwwwaaaaaaaaaaaaaaaak",
-    ".kkaaaaaaaawwwwwaaaaaaaaaaaaaaaakk",
-    "..kkk.......kkkkkkkkkkk......kkkk.",
+    ".kkkkkkkk........kkk....................",
+    ".kddddddk..kkkkkkdddkkkkkk..............",
+    "...k..k...krrrrrrrrrrrrrrrk.............",
+    "...k..k..kGgggkggggggwwggggk...dyyyyd...",
+    ".kkkkkkkkGggggkggggggwbbggggkkkkkkkkkk..",
+    ".ktrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrk.",
+    ".ktrrrrrrrrrrrrrrwwwwwwrrrrrrrrrrrrrrhhk",
+    ".kwwwwwwwwwwwwwwwwkkkkwwwwwwwwwwwwwwwhhk",
+    ".kbbbbbbbbbbbbbbbwwwwkwbbbbbbbbbbbbbbbrk",
+    ".krrrrrrrrrrrrrrrwwwkwwrrrrrrrrrrrrrrrrk",
+    "dkRRRRRRRRRRRRRRRwwwwwwRRRRRRRRRRRRRRRRk",
+    ".kdd.........dddddddddddddd.........dddk",
+    "...d.........kkkkkkkkkkkkkd.........kkk.",
+    "...d......................d.............",
   ];
   const WHEEL = [
-    ["..kkk..", ".kkkkk.", "kkwkwkk", "kkkwkkk", "kkwkwkk", ".kkkkk.", "..kkk.."],
-    ["..kkk..", ".kkkkk.", "kkkwkkk", "kkwwwkk", "kkkwkkk", ".kkkkk.", "..kkk.."],
+    ["...kkk...", ".kkkkkkk.", ".kkYsYkk.", "kkYYsYYkk", "kkssssskk", "kkYYsYYkk", ".kkYsYkk.", ".kkkkkkk.", "...kkk..."],
+    ["...kkk...", ".kkkkkkk.", ".kksYskk.", "kkYsYsYkk", "kkYYsYYkk", "kkYsYsYkk", ".kksYskk.", ".kkkkkkk.", "...kkk..."],
   ];
   const CAR_W = CAR[0].length;
-  const CAR_H = 15;
-  const WHEELS_AT = [[3, 8], [23, 8]];
+  const CAR_H = 17;
+  const WHEELS_AT = [[4, 8], [27, 8]];
+  // Where exhaust puffs and road dust leave the car, in sprite pixels.
+  const EXHAUST = [0, 10];
+  const REAR_WHEEL = [8, 16];
+
+  // The body colour is the page accent, and the lower body a darker shade of it.
+  function shade(hex, k) {
+    const c = rgbOf(hex, [200, 53, 43]);
+    return "rgb(" + Math.round(c[0] * k) + "," + Math.round(c[1] * k) + "," + Math.round(c[2] * k) + ")";
+  }
 
   function paintSprite(rowsArr, ox, oy, pD, fade, seed, pal) {
     for (let j = 0; j < rowsArr.length; j++) {
@@ -1430,12 +1447,10 @@
         const px = ox + i * pD, py = oy + j * pD;
         const cell = Math.floor((py + fracD) / chD) * cols + Math.floor(px / cwD);
         if (cell >= 0 && cell < N && mask[cell] === 1) continue;
-        ctx.globalAlpha = k === "g" ? 0.35 : 1;
-        ctx.fillStyle = k === "a" ? pal.a : k === "w" ? pal.w : k === "h" ? pal.h : pal.k;
+        ctx.fillStyle = pal[k] || pal.k;
         ctx.fillRect(px, py, pD, pD);
       }
     }
-    ctx.globalAlpha = 1;
   }
 
   function sizeCar() {
@@ -1471,15 +1486,22 @@
     if (since < 0.55) hop = Math.sin((since / 0.55) * Math.PI) * 22;
     car.y = bottom - car.h - hop;
     car.visible = true;
-    if (env.night > 0.35) drawBeam(t, env.night * heroFade);
-    // On a dark night sky the outline flips to the page colour.
-    const midRow = Math.floor((car.y + car.h / 2 + frac) / ch);
-    const inv = midRow >= 0 && midRow < rows && rowInv[midRow] === 1;
+    const night = env.night > 0.35;
+    if (night) drawBeam(t, env.night * heroFade);
     const pal = {
-      a: colors.accent,
-      k: inv ? colors.bg : colors.fg,
-      w: inv ? colors.fg : colors.bg,
-      h: env.night > 0.35 ? PALETTE[WINDOW][1] : inv ? colors.fg : colors.bg,
+      k: "#141518",
+      d: "#2f3136",
+      r: colors.accent,
+      R: shade(colors.accent, 0.72),
+      w: "#f5f4f0",
+      b: "#223a7a",
+      g: "#5b7390",
+      G: "#b9d0e6",
+      y: night ? "#ffd34d" : "#e8b92e",
+      t: night ? "#ff5a45" : "#e0352b",
+      h: night ? "#ffd34d" : "#fff3c4",
+      Y: "#d4a72c",
+      s: "#c8ccd2",
     };
     const ox = Math.round(car.x * dpr);
     const oy = Math.round(car.y * dpr);
@@ -1503,13 +1525,27 @@
     if (t - lastDust > 0.07) {
       lastDust = t;
       dust.push({
-        x: car.x + car.p * 3,
-        y: car.y + car.h - car.p + heroOff,
+        x: car.x + car.p * REAR_WHEEL[0],
+        y: car.y + car.p * REAR_WHEEL[1] + heroOff,
         vx: -(35 + Math.random() * 45),
         vy: -(4 + Math.random() * 12),
         born: t,
         life: 0.6 + Math.random() * 0.8,
         g: pick(S.dust, Math.random()),
+        puff: false,
+      });
+    }
+    if (t - lastPuff > 0.2) {
+      lastPuff = t;
+      dust.push({
+        x: car.x + car.p * EXHAUST[0],
+        y: car.y + car.p * EXHAUST[1] + heroOff,
+        vx: -(20 + Math.random() * 20),
+        vy: -(6 + Math.random() * 10),
+        born: t,
+        life: 0.5 + Math.random() * 0.5,
+        g: Math.random() < 0.5 ? G_O : G("°"),
+        puff: true,
       });
     }
     for (let i = dust.length - 1; i >= 0; i--) {
@@ -1528,7 +1564,8 @@
     for (let i = 0; i < dust.length; i++) {
       const d = dust[i];
       const age = (t - d.born) / d.life;
-      putCell(Math.floor(d.x / cw), screenRow(d.y, heroOff), (d.g << 7) | cr(SAND, age < 0.3 ? 0 : age < 0.6 ? 1 : 2));
+      const lvl = age < 0.3 ? 0 : age < 0.6 ? 1 : 2;
+      putCell(Math.floor(d.x / cw), screenRow(d.y, heroOff), (d.g << 7) | (d.puff ? 3 + lvl : cr(SAND, lvl)));
     }
   }
 
