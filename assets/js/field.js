@@ -1,8 +1,9 @@
 // The glyph field behind the page.
 //
 // A fixed canvas is divided into character cells, and every cell draws one
-// glyph from a pre-rendered atlas. The first screen is a landscape (clouds, two
-// ridgelines and a road with a pixel rally car on it). The rest of the page is
+// glyph from a pre-rendered atlas. The first screen is a coastline city: hills
+// and two layers of buildings under a cloudy sky, a seafront road with a pixel
+// rally car on it, and the skyline reflected in the water. The rest of the page is
 // a plot: a dotted grid, ridgeline traces and heavy dashes that come and go.
 // The footer sits on water, and a numbered ruler runs along the top edge.
 // Elements with the class `ko` are cut out of the field so their text stays
@@ -130,15 +131,13 @@
     cloudMid: "=+□▪≈=",
     cloudEdge: "-:·.'-",
     digits: "0123456789",
-    shade: "\\X#■=\\",
-    lit: "/.'",
     base: ".:'`,",
-    road: "─═-—─",
     water: "─═-—~≈─",
+    reflect: "─-─═-",
     energy: "<>/\\|-=+*#%&",
     dust: ".·°'`,",
   };
-  const EXTRA = "/\\-─═■·^_|.━•¯│┊╷";
+  const EXTRA = "/\\-─═■·^_|.━•¯│┊╷□▪┌┐╭╮╧";
   const GLYPHS = Array.from(new Set(Array.from(Object.values(SETS).join("") + EXTRA)));
   const GI = new Map(GLYPHS.map(function (g, i) { return [g, i]; }));
   const S = {};
@@ -158,6 +157,13 @@
   const G_PIPE = GI.get("│");
   const G_GRID = GI.get("┊");
   const G_TICK = GI.get("╷");
+  const G_OPEN = GI.get("□");
+  const G_SMALL = GI.get("▪");
+  const G_TL = GI.get("┌");
+  const G_TR = GI.get("┐");
+  const G_RTL = GI.get("╭");
+  const G_RTR = GI.get("╮");
+  const G_POST = GI.get("╧");
 
   // Atlas rows 0–6 are ink at falling opacity, rows 7–9 are the accent.
   const FG_LEVELS = [1, 0.8, 0.6, 0.44, 0.32, 0.22, 0.13];
@@ -173,8 +179,11 @@
   const FPS = 30;
   const P_HERO = 0.55;
   const P_CALM = 0.3;
-  const SPEED_FAR = 4;
-  const SPEED_NEAR = 11;
+  // Horizontal drift of each layer in px/s, as seen from the moving car.
+  const SPEED_HILLS = 3;
+  const SPEED_FAR = 6;
+  const SPEED_NEAR = 12;
+  const SPEED_ROAD = 22;
   // Plot layer: a dotted grid line every GRID columns, and ridgeline traces
   // TRACE_ROWS rows apart with heavy dashes and dots placed on them.
   const GRID = 6;
@@ -186,7 +195,7 @@
   let cols = 0, rows = 0, N = 0;
   let atlas = null;
   let colors = { bg: "#f3f2ee", fg: "#0b0b0b", accent: "#ff4f00" };
-  let mask, E, RA, RB, HF, HN;
+  let mask, E, RA, RB, HF;
   let traceBuf = new Float32Array(0);
   let traceK0 = 0, traceCount = 0, traceGap = 70, traceAmp = 180, plotOff = 0;
   let heroEl = null, shoreEl = null, koEls = [];
@@ -197,7 +206,7 @@
   const pulses = [];
   const dust = [];
   let lastDust = 0;
-  const L = { cloudBase: 0, farBase: 0, farAmp: 0, nearBase: 0, nearAmp: 0, roadTop: 0, groundEnd: 0 };
+  const L = { cloudBase: 0, hillBase: 0, hillAmp: 0, cityH: 0, farCityH: 0, roadTop: 0, waterTop: 0, groundEnd: 0 };
   const car = { x: 0, y: 0, w: 0, h: 0, p: 4, hopT: -10, visible: false };
 
   function readColors() {
@@ -260,7 +269,6 @@
       RB[i] = hash2(i, 13);
     }
     HF = new Float32Array(cols);
-    HN = new Float32Array(cols);
     readColors();
     buildAtlas();
     measureLayout();
@@ -304,11 +312,10 @@
     return Math.min(1, a * a * 0.6 + b * 0.3 + d * 0.1);
   }
 
-  function computeRidges(t) {
+  function computeHills(t) {
     for (let c = 0; c < cols; c++) {
       const x = (c + 0.5) * cw;
-      HF[c] = L.farBase - L.farAmp * ridge((x + t * SPEED_FAR) / 420, 1.7);
-      HN[c] = L.nearBase - L.nearAmp * ridge((x + t * SPEED_NEAR) / 250, 8.3);
+      HF[c] = L.hillBase - L.hillAmp * ridge((x + t * SPEED_HILLS) / 520, 1.7);
     }
   }
 
@@ -348,7 +355,7 @@
     if (v > 0.26) return hv < 0.07 ? (pick(S.digits, hv * 14) << 4) | 1 : pick(S.cloudDense, hv) << 4;
     if (v > 0.13) return hv < 0.1 ? (pick(S.digits, hv * 10) << 4) | 1 : (pick(S.cloudMid, hv) << 4) | 1;
     if (v > 0.03) return (pick(S.cloudEdge, hv) << 4) | 3;
-    if (sy < L.farBase) {
+    if (sy < L.hillBase) {
       const z = noise3(x / 320 + t * 0.012, sy / 150, 9.1);
       if (z > 0.32) return ((c & 1 ? G_BACK : G_SLASH) << 4) | (z > 0.5 ? 4 : 5);
     }
@@ -357,63 +364,159 @@
     return c % GRID === 0 ? (G_GRID << 4) | 6 : -1;
   }
 
-  function mountainCell(c, sy, H, near, wc) {
-    const h = H[c];
-    const hl = H[c > 0 ? c - 1 : c];
-    const hr = H[c < cols - 1 ? c + 1 : c];
+  // Hills behind the city, lit from the upper left, so slopes that face right
+  // get denser hatching.
+  function hillCell(c, sy, wc) {
+    const h = HF[c];
+    const hl = HF[c > 0 ? c - 1 : c];
+    const hr = HF[c < cols - 1 ? c + 1 : c];
     const slope = (hr - hl) / (2 * cw);
     const depth = (sy - h) / ch;
     const rs = Math.floor(sy / ch);
-    const edgeRows = Math.max(1, (Math.abs(slope) * cw) / ch + 0.6);
-    if (depth < edgeRows) {
+    if (depth < Math.max(1, (Math.abs(slope) * cw) / ch + 0.6)) {
       let g = G_DASH;
       if (slope < -0.3) g = G_SLASH;
       else if (slope > 0.3) g = G_BACK;
       else if (hl > h && hr > h) g = G_CARET;
-      return (g << 4) | (near ? 0 : 2);
+      return (g << 4) | 3;
     }
-    const hv = hash2(wc, rs + (near ? 900 : 1900));
-    const fade = 1 - smooth(3, near ? 16 : 10, depth);
-    const tex = noise3((wc * cw) / 46, sy / 46, near ? 3.3 : 7.7);
+    const hv = hash2(wc, rs + 1900);
+    const fade = 1 - smooth(3, 10, depth);
     if (slope > 0.05) {
-      if ((((wc - rs) % 3) + 3) % 3 === 0 && hv < 0.8 * fade + 0.1) return (G_BACK << 4) | (near ? 1 : 3);
-      if (tex > 0.25 && hv < fade) return (pick(S.shade, hash2(wc, rs)) << 4) | (near ? 1 : 3);
-    } else {
-      if ((((wc + rs) % 4) + 4) % 4 === 0 && hv < 0.5 * fade) return (G_SLASH << 4) | (near ? 2 : 4);
-      if (tex > 0.45 && hv < 0.4 * fade) return (pick(S.lit, hash2(wc, rs)) << 4) | (near ? 2 : 4);
+      if ((((wc - rs) % 3) + 3) % 3 === 0 && hv < 0.7 * fade + 0.1) return (G_BACK << 4) | 4;
+    } else if ((((wc + rs) % 4) + 4) % 4 === 0 && hv < 0.4 * fade) {
+      return (G_SLASH << 4) | 5;
     }
-    if (hv < 0.05 + 0.08 * (1 - fade)) return (pick(S.base, hash2(rs, wc)) << 4) | (near ? 3 : 5);
+    if (hv < 0.04) return (pick(S.base, hash2(rs, wc)) << 4) | 5;
     return -1;
   }
 
-  function groundCell(x, sy, t) {
+  // ----------------------------------------------------------------- city ---
+  // Buildings stand on lots of a fixed width along an endless street, and
+  // everything about a building comes from hashing its lot number. The
+  // building functions return a glyph code, -1 for the blank inside of a
+  // building, or NOT_HERE when the point is not on a building.
+  const NOT_HERE = -3;
+  const LOT_NEAR = 14;
+  const LOT_FAR = 9;
+
+  // Windows switch on and off every few seconds, each on its own schedule.
+  function windowCode(id, lx, ly, t) {
+    const hw = hash2(id * 64 + lx, ly + 300);
+    const on = hash3(id * 64 + lx, ly, Math.floor(t / 7 + hw * 7)) < 0.5;
+    if (!on) return (G_OPEN << 4) | 3;
+    return hw < 0.035 ? (G_SMALL << 4) | 7 : (G_SMALL << 4) | 1;
+  }
+
+  function nearBuilding(x, sy, t) {
+    const wc = Math.floor((x + t * SPEED_NEAR) / cw);
+    const lot = Math.floor(wc / LOT_NEAR);
+    const w = 6 + ((hash2(lot, 11) * 8) | 0);
+    const lx = wc - lot * LOT_NEAR - ((hash2(lot, 12) * (LOT_NEAR - w)) | 0);
+    if (lx < 0 || lx >= w) return NOT_HERE;
+    const ly = Math.floor((L.roadTop - sy) / ch);
+    if (ly < 0) return NOT_HERE;
+    const floors = Math.max(3, Math.round((L.cityH * (0.15 + 0.85 * Math.pow(hash2(lot, 13), 1.4))) / ch));
+    const style = (hash2(lot, 14) * 5) | 0;
+    const ha = hash2(lot, 15);
+    if (ly >= floors) {
+      // Some roofs carry an antenna with a blinking warning light.
+      const ant = ha < 0.35 ? 2 + (((ha * 30) | 0) % 3) : 0;
+      if (!ant || lx !== w >> 1 || ly >= floors + ant) return NOT_HERE;
+      if (ly < floors + ant - 1) return (G_PIPE << 4) | 1;
+      return Math.floor(t / 0.8 + ha * 5) % 2 ? (G_BULLET << 4) | 7 : (G_TICK << 4) | 2;
+    }
+    let left = 0, right = w - 1;
+    // Stepped towers are two cells narrower on each side above the shoulder.
+    if (style === 3 && w > 7) {
+      const shoulder = Math.floor(floors * 0.7);
+      const outside = lx < 2 || lx > w - 3;
+      if (ly > shoulder && outside) return NOT_HERE;
+      if (ly === shoulder && outside) return ((lx === 0 ? G_TL : lx === w - 1 ? G_TR : G_H) << 4) | 1;
+      if (ly > shoulder) {
+        left = 2;
+        right = w - 3;
+      }
+    }
+    if (ly === floors - 1) {
+      const round = style === 4;
+      const g = lx === left ? (round ? G_RTL : G_TL) : lx === right ? (round ? G_RTR : G_TR) : G_H;
+      return (g << 4) | 1;
+    }
+    if (lx === left || lx === right) return (G_PIPE << 4) | 1;
+    const ix = lx - left;
+    if (style === 1) {
+      if (ly % 3 === 0) return (G_HH << 4) | 2;
+      return ix % 2 === 1 ? windowCode(lot, lx, ly, t) : -1;
+    }
+    if (style === 2) {
+      if (ix % 3 === 0) return (G_PIPE << 4) | 3;
+      return ly % 2 === 1 ? windowCode(lot, lx, ly, t) : -1;
+    }
+    return ix % 2 === 1 && ly % 2 === 1 ? windowCode(lot, lx, ly, t) : -1;
+  }
+
+  function farBuilding(x, sy, t) {
+    const wc = Math.floor((x + t * SPEED_FAR) / cw);
+    const lot = Math.floor(wc / LOT_FAR);
+    const w = 4 + ((hash2(lot, 21) * 5) | 0);
+    const lx = wc - lot * LOT_FAR - ((hash2(lot, 22) * (LOT_FAR - w)) | 0);
+    if (lx < 0 || lx >= w) return NOT_HERE;
+    const ly = Math.floor((L.roadTop - sy) / ch);
+    const floors = Math.max(3, Math.round((L.farCityH * (0.3 + 0.7 * Math.pow(hash2(lot, 23), 1.2))) / ch));
+    if (ly < 0 || ly >= floors) return NOT_HERE;
+    if (ly === floors - 1) return (G_H << 4) | 2;
+    if (lx === 0 || lx === w - 1) return (G_PIPE << 4) | 3;
+    if (lx % 2 === 1 && ly % 2 === 0) {
+      const on = hash3(lot * 16 + lx, ly, Math.floor(t / 9 + hash2(lot, ly) * 9)) < 0.4;
+      return on ? (G_SMALL << 4) | 2 : (G_DOT << 4) | 4;
+    }
+    // Distant buildings are hatched so they read as a mass behind the front row.
+    return (((wc + ly) % 3) + 3) % 3 === 0 ? (G_SLASH << 4) | 5 : -1;
+  }
+
+  // The road along the front, then the sea wall with railing posts.
+  function promenadeCell(x, sy, t) {
     const ri = Math.floor((sy - L.roadTop) / ch);
-    if (ri === 0) {
-      const wc = Math.floor((x + t * 20) / cw);
-      return ((hash2(wc >> 2, 91) < 0.82 ? G_H : G_HH) << 4) | 1;
+    const wc = Math.floor((x + t * SPEED_ROAD) / cw);
+    if (ri === 0) return ((hash2(wc >> 2, 91) < 0.85 ? G_H : G_HH) << 4) | 1;
+    if (ri === 2) return ((wc % 7) + 7) % 7 < 3 ? (G_DASH << 4) | 3 : -1;
+    if (ri === 3) return (((((wc % 5) + 5) % 5 === 0) ? G_POST : G_HH) << 4) | 1;
+    return hash2(wc, 77) < 0.04 ? (G_DOT << 4) | 5 : -1;
+  }
+
+  // The sea: the skyline mirrored in the water, pushed sideways by the waves
+  // and broken up more the further down it is, with swell in between.
+  function seaCell(c, r, x, sy, t) {
+    const wi = Math.floor((sy - L.waterTop) / ch);
+    if (wi === 0) return ((hash2(Math.floor((x + t * 6) / cw) >> 2, 5) < 0.8 ? G_H : G_DASH) << 4) | 2;
+    const fade = 1 - smooth(L.waterTop + ch * 5, L.groundEnd, sy);
+    const wob = Math.sin(t * 1.3 + wi * 0.9) * cw * (0.8 + wi * 0.15);
+    const b = nearBuilding(x + wob, 2 * L.waterTop - sy, t);
+    if (b !== NOT_HERE) {
+      const hv = hash3(c, r, Math.floor(t * 3));
+      if (hv > (0.75 - wi * 0.025) * fade) return -1;
+      if (b >= 0 && (b & 15) >= 7) return (G_H << 4) | 8;
+      if (b >= 0 && b >> 4 === G_SMALL) return (G_H << 4) | 1;
+      return (pick(S.reflect, hv) << 4) | (b >= 0 ? 3 : 4);
     }
-    const speed = 20 + ri * 8;
-    const wc = Math.floor((x + t * speed) / cw);
-    const segLen = 2 + ((hash2(ri, 17) * 7) | 0);
-    const hs = hash2(Math.floor(wc / segLen), ri + 31);
-    const fade = 1 - smooth(L.roadTop + ch * 6, L.groundEnd, sy);
-    const dens = 0.5 * fade;
-    const lvl = ri < 4 ? 2 : 1;
-    if (hs < dens) {
-      const hc = hash2(wc, ri + 5);
-      if (hc < 0.035) return (pick(S.digits, hash2(wc, ri + 9)) << 4) | lvl;
-      if (hc < 0.06) return (G_SQ << 4) | lvl;
-      return (S.road[((hs / dens) * S.road.length) | 0] << 4) | lvl;
-    }
-    if (hash2(wc, ri + 60) < 0.025 * fade) return (G_DOT << 4) | 3;
+    const wc = Math.floor((x + t * (5 + wi * 2) + Math.sin(t * 0.9 + wi * 0.7) * cw) / cw);
+    const segLen = 2 + ((hash2(wi, 71) * 6) | 0);
+    const hs = hash2(Math.floor(wc / segLen), wi + 131);
+    const dens = Math.min(0.45, 0.1 + wi * 0.035) * fade;
+    if (hs < dens) return (S.water[((hs / dens) * S.water.length) | 0] << 4) | (wi < 4 ? 4 : 3);
     return -1;
   }
 
   function heroCell(c, r, x, sy, t, idx) {
     if (sy >= L.groundEnd) return -2;
-    if (sy >= L.roadTop) return groundCell(x, sy, t);
-    if (sy >= HN[c]) return mountainCell(c, sy, HN, true, Math.floor((x + t * SPEED_NEAR) / cw));
-    if (sy >= HF[c]) return mountainCell(c, sy, HF, false, Math.floor((x + t * SPEED_FAR) / cw));
+    if (sy >= L.waterTop) return seaCell(c, r, x, sy, t);
+    if (sy >= L.roadTop) return promenadeCell(x, sy, t);
+    let b = nearBuilding(x, sy, t);
+    if (b !== NOT_HERE) return b;
+    b = farBuilding(x, sy, t);
+    if (b !== NOT_HERE) return b;
+    if (sy >= HF[c]) return hillCell(c, sy, Math.floor((x + t * SPEED_HILLS) / cw));
     return skyCell(c, r, x, sy, t, idx);
   }
 
@@ -665,12 +768,13 @@
   function draw(t, dt) {
     const scrollY = window.scrollY || 0;
     const H = heroH || vh;
-    L.cloudBase = H * 0.42;
-    L.farBase = H * 0.74;
-    L.farAmp = H * 0.26;
-    L.nearBase = H * 0.83;
-    L.nearAmp = H * 0.15;
-    L.roadTop = Math.round((H * 0.86) / ch) * ch;
+    L.cloudBase = H * 0.4;
+    L.roadTop = Math.round((H * 0.8) / ch) * ch;
+    L.waterTop = L.roadTop + ch * 4;
+    L.hillBase = L.roadTop;
+    L.hillAmp = H * 0.3;
+    L.cityH = H * 0.42;
+    L.farCityH = H * 0.34;
     L.groundEnd = H + vh * 0.3;
 
     const heroOff = scrollY * P_HERO;
@@ -678,7 +782,7 @@
     const heroVisible = heroFade > 0 && L.groundEnd - heroOff > 0;
     const needCalm = heroFade < 1 || vh + heroOff > L.groundEnd;
     if (needCalm) computeTraces(t, scrollY);
-    if (heroVisible) computeRidges(t);
+    if (heroVisible) computeHills(t);
     buildMask();
     const shoreTop = shoreEl ? shoreEl.getBoundingClientRect().top : Infinity;
 
