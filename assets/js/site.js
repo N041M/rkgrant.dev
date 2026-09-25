@@ -77,9 +77,9 @@
     document.querySelectorAll("[data-set-theme]").forEach(function (b) {
       b.setAttribute("aria-pressed", String(b.getAttribute("data-set-theme") === choice));
     });
-    const bg = getComputedStyle(root).getPropertyValue("--bg").trim();
+    const bar = getComputedStyle(root).getPropertyValue("--bar").trim();
     themeMetas.forEach(function (m, i) {
-      m.setAttribute("content", root.hasAttribute("data-theme") ? bg : themeMetaDefaults[i]);
+      m.setAttribute("content", root.hasAttribute("data-theme") ? bar : themeMetaDefaults[i]);
     });
   }
 

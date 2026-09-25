@@ -6,7 +6,7 @@
 // farmland, snowy mountains, a desert and a forest, while the day turns from
 // morning to night and back. The rest of the page is a plot: a dotted grid,
 // ridgeline traces and heavy dashes that come and go. The footer sits on
-// water, and a numbered ruler runs along the top edge. Elements with the class
+// water, and a numbered ruler hangs under the top bar. Elements with the class
 // `ko` are cut out of the field so their text stays readable.
 //
 // The whole field scrolls at PARALLAX times the page speed. Cells are worked
@@ -217,8 +217,8 @@
   let fontPx = 11, cw = 7, ch = 14, cwD = 7, chD = 14;
   let cols = 0, rows = 0, N = 0;
   let atlas = null;
-  let colors = { bg: "#f3f2ee", fg: "#0b0b0b", accent: "#ff4f00" };
-  let bgRGB = [243, 242, 238], fgRGB = [11, 11, 11], acRGB = [255, 79, 0];
+  let colors = { bg: "#fbfaf8", fg: "#17181b", accent: "#c8352b" };
+  let bgRGB = [251, 250, 248], fgRGB = [23, 24, 27], acRGB = [200, 53, 43];
   let darkPage = false;
   let mask, E, RA;
   // Per column: terrain height, terrain biome, and the biome of the front
@@ -241,6 +241,8 @@
   // The hero's text blocks (left, right and bottom in page px), which the
   // road keeps clear of, and whether the hero text is currently shown light.
   let heroText = null, heroBlocks = [], sceneDark = false;
+  // Where the top bar ends, so the ruler can hang just below it.
+  let barEl = null, barBottom = 0;
   let reduced = reducedMQ.matches;
   let started = false;
   let raf = 0, lastDraw = 0, lastT = 0, lastScroll = -1;
@@ -310,6 +312,8 @@
     koEls = Array.from(document.querySelectorAll(".ko"));
     heroH = heroEl ? heroEl.offsetHeight : 0;
     heroText = heroEl ? heroEl.querySelector(".hero-inner") : null;
+    barEl = document.querySelector(".top");
+    barBottom = barEl ? Math.round(barEl.getBoundingClientRect().bottom) : 0;
     heroBlocks = heroEl
       ? Array.from(heroEl.querySelectorAll(".ko")).map(function (el) {
           const r = el.getBoundingClientRect();
@@ -1122,17 +1126,20 @@
     return -1;
   }
 
-  // A numbered ruler along the top edge. Its ticks line up with the grid.
+  // A numbered ruler hanging under the top bar. Its ticks line up with the
+  // grid's dotted columns.
   function drawRuler() {
-    ctx.fillStyle = rowFill[0] || colors.bg;
-    ctx.fillRect(0, 0, canvas.width, chD);
-    const row = rowInv[0] ? 13 : 3;
+    const yD = Math.round(barBottom * dpr);
+    const r = Math.min(rows - 1, Math.max(0, Math.floor((barBottom + ch / 2 + frac) / ch)));
+    ctx.fillStyle = rowFill[r] || colors.bg;
+    ctx.fillRect(0, yD, canvas.width, chD);
+    const row = rowInv[r] ? 13 : 3;
     for (let c = 0; c < cols; c++) {
       const m = c % GRID;
       let g = -1;
       if (m === 0) g = G_TICK;
       else if (m === 1 || m === 2) g = GI.get(String(Math.floor(c / GRID) + 1).padStart(2, "0")[m - 1]);
-      if (g >= 0) ctx.drawImage(atlas, g * cwD, row * chD, cwD, chD, c * cwD, 0, cwD, chD);
+      if (g >= 0) ctx.drawImage(atlas, g * cwD, row * chD, cwD, chD, c * cwD, yD, cwD, chD);
     }
   }
 
