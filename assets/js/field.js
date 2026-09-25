@@ -216,18 +216,19 @@
     return COLOUR_BASE + colour * 3 + level;
   }
 
-  // Sky colours at the top of the sky, at the horizon, and for the ground and
-  // water, by day, at dusk and at night, for each page theme.
+  // Sky colours at the top of the sky and at the horizon, then the ground and
+  // water, then the road, by day, at dusk and at night, for each page theme.
+  // The road is a shade apart from the ground on either side of it.
   const SKY_KEYS = {
     light: {
-      day: ["#cfe0ee", "#f3efe5", "#e9ebe6"],
-      dusk: ["#766b98", "#f0a068", "#cfb9ab"],
-      night: ["#0c1226", "#1e284a", "#0b1020"],
+      day: ["#cfe0ee", "#f3efe5", "#e9ebe6", "#d5d6d0"],
+      dusk: ["#766b98", "#f0a068", "#cfb9ab", "#b39d93"],
+      night: ["#0c1226", "#1e284a", "#0b1020", "#1b2236"],
     },
     dark: {
-      day: ["#1c2b3e", "#2c3947", "#171b21"],
-      dusk: ["#241f3b", "#5c3125", "#1a1618"],
-      night: ["#090d1a", "#131b31", "#0a0d16"],
+      day: ["#1c2b3e", "#2c3947", "#171b21", "#262b33"],
+      dusk: ["#241f3b", "#5c3125", "#1a1618", "#2b2327"],
+      night: ["#090d1a", "#131b31", "#0a0d16", "#191d2a"],
     },
   };
 
@@ -307,7 +308,7 @@
   let lastDust = 0, lastPuff = 0;
   const L = { H: 0, cloudBase: 0, cityH: 0, farCityH: 0, roadTop: 0, waterTop: 0, groundEnd: 0 };
   const env = { day: 1, night: 0, dusk: 0, wDay: 1, wDusk: 0, wNight: 0, sunX: 0, sunY: 0, sunR: 0, moonX: 0, moonY: 0, moonR: 0 };
-  const skyTop = [0, 0, 0], skyHorizon = [0, 0, 0], skyGround = [0, 0, 0];
+  const skyTop = [0, 0, 0], skyHorizon = [0, 0, 0], skyGround = [0, 0, 0], skyRoad = [0, 0, 0];
   const car = { x: 0, y: 0, w: 0, h: 0, p: 4, hopT: -10, visible: false };
 
   function rgbOf(str, fallback) {
@@ -490,15 +491,16 @@
     for (let j = 0; j < 3; j++) out[j] = K.day[i][j] * env.wDay + K.dusk[i][j] * env.wDusk + K.night[i][j] * env.wNight;
   }
 
-  // Each row of the scene gets its sky colour: a blend from the top of the sky
-  // to the horizon, then the ground and water below the road. It fades back to
-  // the page colour at the bottom of the scene and as the page scrolls. Rows
-  // dark enough to need light glyphs are marked.
+  // Each row of the scene gets its sky colour. The sky blends from the top to
+  // the horizon, and below it come the road and then the ground and water.
+  // The colours fade back to the page colour at the bottom of the scene and
+  // as the page scrolls. Rows dark enough to need light glyphs are marked.
   function computeTone(fade, rowOff) {
     const K = darkPage ? SKY_RGB.dark : SKY_RGB.light;
     mixSky(K, 0, skyTop);
     mixSky(K, 1, skyHorizon);
     mixSky(K, 2, skyGround);
+    mixSky(K, 3, skyRoad);
     for (let r = 0; r < rows; r++) {
       const sy = (r + rowOff + 0.5) * ch;
       const k = fade > 0 && sy < L.groundEnd ? fade * (1 - smooth(L.H * 0.98, L.groundEnd, sy)) : 0;
@@ -516,9 +518,10 @@
         c1 = skyTop[1] + (skyHorizon[1] - skyTop[1]) * f;
         c2 = skyTop[2] + (skyHorizon[2] - skyTop[2]) * f;
       } else {
-        c0 = skyGround[0];
-        c1 = skyGround[1];
-        c2 = skyGround[2];
+        const g = sy < L.waterTop ? skyRoad : skyGround;
+        c0 = g[0];
+        c1 = g[1];
+        c2 = g[2];
       }
       c0 = Math.round(bgRGB[0] + (c0 - bgRGB[0]) * k);
       c1 = Math.round(bgRGB[1] + (c1 - bgRGB[1]) * k);
@@ -1951,8 +1954,8 @@
       case BRIDGE: return (((wc & 1) ? G_SLASH : G_BACK) << 7) | cr(CLAY, 1);
       case MOUNTAINS: return ((mod(wc, 4) === 0 ? G_DTEE : G_HH) << 7) | 2;
       case VILLAGE: return (G_OPEN << 7) | cr(ROCK, mod(wc, 3) === 0 ? 1 : 2);
-      case DESERT: return hv < 0.3 ? (pick(S.base, hv * 3) << 7) | cr(SAND, 1) : -1;
-      default: return hv < 0.6 ? (pick(S.fern, hv) << 7) | cr(LEAF, 1) : -1;
+      case DESERT: return hv < 0.2 ? (pick(S.base, hv * 5) << 7) | cr(SAND, 1) : (G_H << 7) | 4;
+      default: return ((mod(wc, 9) < 7 ? G_H : G_DASH) << 7) | 3;
     }
   }
 
