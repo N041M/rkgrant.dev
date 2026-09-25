@@ -24,7 +24,8 @@
    --accent is the one colour on the page, and the background picks it up too.
    --line is for hairlines, --soft for hover fills, --panel for cards and
    buttons, and --bar for the top bar. Panels have an --edge and cast a hard
-   --drop shadow so they stand off the moving background. */
+   --drop shadow so they stand off the moving background. The globe shades
+   its sea and land between the --sea-* and --land-* pairs. */
 :root {
   --bg: #fbfaf8;
   --fg: #17181b;
@@ -38,6 +39,10 @@
   --accent: #c8352b;
   --accent-ink: #c8352b;
   --on-accent: #fbfaf8;
+  --sea-lit: #f4f2ed;
+  --sea-dark: #b9b5ac;
+  --land-lit: #9b978f;
+  --land-dark: #35363a;
   --mono: "Departure Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --gutter: clamp(16px, 4vw, 40px);
@@ -58,6 +63,10 @@
     --accent: #dc665e;
     --accent-ink: #e8776e;
     --on-accent: #131417;
+    --sea-lit: #3a3b41;
+    --sea-dark: #1c1d20;
+    --land-lit: #d8d6d0;
+    --land-dark: #4d4e53;
     color-scheme: dark;
   }
 }
@@ -74,6 +83,10 @@
   --accent: #dc665e;
   --accent-ink: #e8776e;
   --on-accent: #131417;
+  --sea-lit: #3a3b41;
+  --sea-dark: #1c1d20;
+  --land-lit: #d8d6d0;
+  --land-dark: #4d4e53;
   color-scheme: dark;
 }
 
@@ -460,6 +473,50 @@ h2 {
 .plot .i { background: var(--fg); color: var(--bg); }
 .plot .ai { background: var(--accent); color: var(--on-accent); }
 
+/* The globe's shading. Sea and land each blend from a lit colour to a shadow
+   colour, and s0–s15 and l0–l15 set how lit a cell is. Sea is drawn as the
+   cell background (sb) or, on the rim, as a glyph (sf). Land is a glyph (lf)
+   or, under a border, the background (lb). */
+.plot .s0 { --s: 0%; }
+.plot .s1 { --s: 7%; }
+.plot .s2 { --s: 13%; }
+.plot .s3 { --s: 20%; }
+.plot .s4 { --s: 27%; }
+.plot .s5 { --s: 33%; }
+.plot .s6 { --s: 40%; }
+.plot .s7 { --s: 47%; }
+.plot .s8 { --s: 53%; }
+.plot .s9 { --s: 60%; }
+.plot .s10 { --s: 67%; }
+.plot .s11 { --s: 73%; }
+.plot .s12 { --s: 80%; }
+.plot .s13 { --s: 87%; }
+.plot .s14 { --s: 93%; }
+.plot .s15 { --s: 100%; }
+.plot .l0 { --l: 0%; }
+.plot .l1 { --l: 7%; }
+.plot .l2 { --l: 13%; }
+.plot .l3 { --l: 20%; }
+.plot .l4 { --l: 27%; }
+.plot .l5 { --l: 33%; }
+.plot .l6 { --l: 40%; }
+.plot .l7 { --l: 47%; }
+.plot .l8 { --l: 53%; }
+.plot .l9 { --l: 60%; }
+.plot .l10 { --l: 67%; }
+.plot .l11 { --l: 73%; }
+.plot .l12 { --l: 80%; }
+.plot .l13 { --l: 87%; }
+.plot .l14 { --l: 93%; }
+.plot .l15 { --l: 100%; }
+.plot .sb { background: color-mix(in srgb, var(--sea-lit) var(--s), var(--sea-dark)); }
+.plot .sf { color: color-mix(in srgb, var(--sea-lit) var(--s), var(--sea-dark)); }
+.plot .lb { background: color-mix(in srgb, var(--land-lit) var(--l), var(--land-dark)); }
+.plot .lf { color: color-mix(in srgb, var(--land-lit) var(--l), var(--land-dark)); }
+.plot .cut { color: var(--panel); }
+.plot .gr { color: color-mix(in srgb, var(--fg) 16%, transparent); }
+.plot .tag { background: var(--panel); }
+
 .card-body {
   display: flex;
   flex-direction: column;
@@ -619,8 +676,11 @@ h2 {
 .contact-list dt { line-height: 2; }
 .contact-list dd { margin: 0; }
 
-.globe-fig { min-width: 0; }
-.globe-fig .plot { height: 322px; }
+.globe-fig { position: relative; min-width: 0; }
+.globe-fig .plot { height: 322px; cursor: grab; touch-action: pan-y; }
+.globe-fig .plot.grabbing { cursor: grabbing; }
+/* The zoom buttons sit on the right of the readings under the globe. */
+.globe-zoom { position: absolute; right: 14px; bottom: 14px; }
 
 @media (max-width: 860px) {
   .contact-grid { grid-template-columns: minmax(0, 1fr); }
