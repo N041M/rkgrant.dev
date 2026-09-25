@@ -1,10 +1,11 @@
-// Language and theme switching, the copy button, and when text scrambles.
+// Language and theme switching, section shortcuts, the local-time clock, the
+// copy button, and when text scrambles.
 (function () {
   "use strict";
 
   const root = document.documentElement;
   const Scramble = window.Scramble;
-  const darkMQ = window.matchMedia("(prefers-color-scheme: dark)");
+  const reducedMQ = window.matchMedia("(prefers-reduced-motion: reduce)");
 
   const META = {
     en: {
@@ -41,7 +42,9 @@
       b.setAttribute("aria-pressed", String(b.getAttribute("data-set-lang") === lang));
     });
     document.querySelectorAll("[data-label-" + lang + "]").forEach(function (el) {
-      el.setAttribute("aria-label", el.getAttribute("data-label-" + lang));
+      const label = el.getAttribute("data-label-" + lang);
+      el.setAttribute("aria-label", label);
+      if (el.tagName === "BUTTON") el.title = label;
     });
     const url = new URL(window.location.href);
     if (url.searchParams.has("lang")) {
@@ -64,30 +67,95 @@
 
   // ---------------------------------------------------------------- theme ---
 
-  function currentTheme() {
-    const set = root.getAttribute("data-theme");
-    if (set === "light" || set === "dark") return set;
-    return darkMQ.matches ? "dark" : "light";
-  }
+  // "light" and "dark" pin the theme, "system" follows the operating system.
+  const themeMetas = Array.from(document.querySelectorAll('meta[name="theme-color"]'));
+  const themeMetaDefaults = themeMetas.map(function (m) { return m.getAttribute("content"); });
 
-  function syncThemeColor() {
+  function applyTheme(choice) {
+    if (choice === "light" || choice === "dark") root.setAttribute("data-theme", choice);
+    else root.removeAttribute("data-theme");
+    document.querySelectorAll("[data-set-theme]").forEach(function (b) {
+      b.setAttribute("aria-pressed", String(b.getAttribute("data-set-theme") === choice));
+    });
     const bg = getComputedStyle(root).getPropertyValue("--bg").trim();
-    document.querySelectorAll('meta[name="theme-color"]').forEach(function (m) {
-      if (root.hasAttribute("data-theme")) m.setAttribute("content", bg);
+    themeMetas.forEach(function (m, i) {
+      m.setAttribute("content", root.hasAttribute("data-theme") ? bg : themeMetaDefaults[i]);
     });
   }
 
-  const themeButton = document.querySelector("[data-theme-toggle]");
-  if (themeButton) {
-    themeButton.addEventListener("click", function () {
-      const next = currentTheme() === "dark" ? "light" : "dark";
-      root.setAttribute("data-theme", next);
-      store("theme", next);
-      syncThemeColor();
-      pulseFrom(themeButton);
+  document.querySelectorAll("[data-set-theme]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      const choice = button.getAttribute("data-set-theme");
+      store("theme", choice);
+      applyTheme(choice);
+      pulseFrom(button);
+    });
+  });
+  applyTheme(root.getAttribute("data-theme") || "system");
+
+  // ------------------------------------------------------------ navigation ---
+
+  // Each section link has a one-letter shortcut in each language, shown next
+  // to it. The link of the section in the middle of the screen is marked.
+  const navLinks = Array.from(document.querySelectorAll(".nav a[href^='#']"));
+
+  function goTo(link) {
+    const target = document.querySelector(link.getAttribute("href"));
+    if (!target) return;
+    target.scrollIntoView({ behavior: reducedMQ.matches ? "auto" : "smooth" });
+    if (Scramble) Scramble.leaves(link).forEach(function (el) { if (el.getClientRects().length) Scramble.element(el); });
+  }
+
+  document.addEventListener("keydown", function (e) {
+    if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
+    const t = e.target;
+    if (t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+    const key = e.key.toLowerCase();
+    const link = navLinks.find(function (a) { return a.getAttribute("data-key-" + root.lang) === key; });
+    if (!link) return;
+    e.preventDefault();
+    goTo(link);
+  });
+
+  // The current section is the last one whose top has passed 40% of the
+  // screen, or the last section once the page is scrolled to the end.
+  const sections = navLinks.map(function (a) { return document.querySelector(a.getAttribute("href")); });
+  function spy() {
+    const line = window.innerHeight * 0.4;
+    let current = -1;
+    sections.forEach(function (sec, i) {
+      if (sec && sec.getBoundingClientRect().top <= line) current = i;
+    });
+    if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4) current = sections.length - 1;
+    navLinks.forEach(function (a, i) { a.setAttribute("aria-current", String(i === current)); });
+  }
+  let spyQueued = false;
+  window.addEventListener("scroll", function () {
+    if (spyQueued) return;
+    spyQueued = true;
+    requestAnimationFrame(function () {
+      spyQueued = false;
+      spy();
+    });
+  }, { passive: true });
+  spy();
+
+  // ----------------------------------------------------------------- clock ---
+
+  function tick() {
+    const locale = root.lang === "cs" ? "cs-CZ" : "en-GB";
+    const now = new Date();
+    const time = new Intl.DateTimeFormat(locale, { timeZone: "Europe/Prague", hour: "2-digit", minute: "2-digit" }).format(now);
+    const zone = new Intl.DateTimeFormat(locale, { timeZone: "Europe/Prague", timeZoneName: "short" })
+      .formatToParts(now)
+      .find(function (part) { return part.type === "timeZoneName"; });
+    document.querySelectorAll("[data-clock]").forEach(function (el) {
+      el.textContent = time + (zone ? " " + zone.value : "");
     });
   }
-  syncThemeColor();
+  tick();
+  setInterval(tick, 20000);
+  document.addEventListener("langchange", tick);
 
   // ----------------------------------------------------------------- copy ---
 

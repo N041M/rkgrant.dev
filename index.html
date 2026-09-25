@@ -72,19 +72,28 @@
   <canvas id="field" aria-hidden="true"></canvas>
 
   <header class="top">
-    <a class="pill brand ko" href="#top" aria-label="rkgrant.dev"><span data-scramble>rkgrant.dev</span><span class="cursor" aria-hidden="true"></span></a>
-    <div class="pill bar ko">
+    <div class="bar ko">
+      <a class="brand" href="#top">
+        <svg class="mark" viewBox="0 0 16 16" aria-hidden="true" shape-rendering="crispEdges"><rect class="mark-bg" width="16" height="16" rx="3"/><path class="mark-r" d="M3 4h4v1H3zM3 5h1v6H3zM7 5h1v2H7zM4 7h3v1H4zM5 8h1v1H5zM6 9h1v1H6zM7 10h1v1H7z"/><rect class="mark-cursor" x="10" y="4" width="3" height="7"/></svg>
+        <span data-scramble>rkgrant.dev</span>
+      </a>
       <nav class="nav" data-label-en="Sections" data-label-cs="Sekce" aria-label="Sections">
-        <a href="#projects" data-scramble><span lang="en">Projects</span><span lang="cs">Projekty</span></a>
-        <a href="#experience" data-scramble><span lang="en">Experience</span><span lang="cs">Zkušenosti</span></a>
-        <a href="#skills" data-scramble><span lang="en">Skills</span><span lang="cs">Dovednosti</span></a>
-        <a href="#contact" data-scramble><span lang="en">Contact</span><span lang="cs">Kontakt</span></a>
+        <a href="#projects" data-key-en="p" data-key-cs="p"><kbd>P</kbd><span data-scramble><span lang="en">Projects</span><span lang="cs">Projekty</span></span></a>
+        <a href="#experience" data-key-en="e" data-key-cs="z"><kbd><span lang="en">E</span><span lang="cs">Z</span></kbd><span data-scramble><span lang="en">Experience</span><span lang="cs">Zkušenosti</span></span></a>
+        <a href="#skills" data-key-en="s" data-key-cs="d"><kbd><span lang="en">S</span><span lang="cs">D</span></kbd><span data-scramble><span lang="en">Skills</span><span lang="cs">Dovednosti</span></span></a>
+        <a href="#contact" data-key-en="c" data-key-cs="k"><kbd><span lang="en">C</span><span lang="cs">K</span></kbd><span data-scramble><span lang="en">Contact</span><span lang="cs">Kontakt</span></span></a>
       </nav>
-      <div class="lang" role="group" data-label-en="Language" data-label-cs="Jazyk" aria-label="Language">
-        <button type="button" data-set-lang="cs" lang="cs-CZ" aria-label="Čeština" aria-pressed="false">CZ</button>
-        <button type="button" data-set-lang="en" lang="en-GB" aria-label="English" aria-pressed="true">EN</button>
+      <div class="controls">
+        <div class="seg" role="group" data-label-en="Language" data-label-cs="Jazyk" aria-label="Language">
+          <button type="button" data-set-lang="cs" lang="cs-CZ" aria-label="Čeština" title="Čeština" aria-pressed="false">CZ</button>
+          <button type="button" data-set-lang="en" lang="en-GB" aria-label="English" title="English" aria-pressed="true">EN</button>
+        </div>
+        <div class="seg" role="group" data-label-en="Theme" data-label-cs="Vzhled" aria-label="Theme">
+          <button type="button" data-set-theme="light" data-label-en="Light" data-label-cs="Světlý" aria-label="Light" aria-pressed="false"><i class="ico ico-light" aria-hidden="true"></i></button>
+          <button type="button" data-set-theme="dark" data-label-en="Dark" data-label-cs="Tmavý" aria-label="Dark" aria-pressed="false"><i class="ico ico-dark" aria-hidden="true"></i></button>
+          <button type="button" data-set-theme="system" data-label-en="Match the system" data-label-cs="Podle systému" aria-label="Match the system" aria-pressed="true"><i class="ico ico-auto" aria-hidden="true"></i></button>
+        </div>
       </div>
-      <button type="button" class="theme" data-theme-toggle data-label-en="Switch between light and dark" data-label-cs="Přepnout světlý a tmavý režim" aria-label="Switch between light and dark"><i aria-hidden="true"></i></button>
     </div>
   </header>
 
@@ -101,14 +110,13 @@
           <a class="btn ko" href="https://www.linkedin.com/in/rkgrant" data-scramble><span>LinkedIn</span><span aria-hidden="true">↗</span></a>
           <a class="btn ko" href="mailto:ronaldkarelgrant@email.cz" data-scramble><span>E-mail</span><span aria-hidden="true">→</span></a>
         </div>
-        <p class="place ko" data-scramble="320"><span>Jablonec nad Nisou</span><span aria-hidden="true">·</span><span lang="en">Czech Republic</span><span lang="cs">Česká republika</span></p>
       </div>
     </section>
 
     <section class="section" id="projects" aria-labelledby="projects-h">
       <div class="wrap">
         <header class="section-head ko">
-          <p class="idx" data-scramble>01</p>
+          <p class="kicker"><span class="idx" data-scramble>01</span><span class="of">/ 04</span><span class="rule" aria-hidden="true"></span><span class="meta" data-scramble><span lang="en">5 featured · 4 more</span><span lang="cs">5 hlavních · 4 další</span></span></p>
           <h2 id="projects-h" data-scramble><span lang="en">Projects</span><span lang="cs">Projekty</span></h2>
         </header>
 
@@ -191,7 +199,7 @@
           </article>
         </div>
 
-        <h3 class="subhead ko" data-scramble><span lang="en">Other projects</span><span lang="cs">Další projekty</span></h3>
+        <h3 class="subhead ko"><span data-scramble><span lang="en">Other projects</span><span lang="cs">Další projekty</span></span><span class="rule" aria-hidden="true"></span><span class="n">04</span></h3>
         <ul class="more ko">
           <li>
             <p class="more-name"><a href="https://github.com/N041M/Almanac">Almanac</a></p>
@@ -236,12 +244,12 @@
     <section class="section" id="experience" aria-labelledby="experience-h">
       <div class="wrap">
         <header class="section-head ko">
-          <p class="idx" data-scramble>02</p>
+          <p class="kicker"><span class="idx" data-scramble>02</span><span class="of">/ 04</span><span class="rule" aria-hidden="true"></span><span class="meta" data-scramble><span lang="en">Since 2021</span><span lang="cs">Od roku 2021</span></span></p>
           <h2 id="experience-h" data-scramble><span lang="en">Experience</span><span lang="cs">Zkušenosti</span></h2>
         </header>
 
         <div class="block ko">
-          <h3 class="subhead" data-scramble><span lang="en">Work</span><span lang="cs">Práce</span></h3>
+          <h3 class="subhead"><span data-scramble><span lang="en">Work</span><span lang="cs">Práce</span></span><span class="rule" aria-hidden="true"></span><span class="n">03</span></h3>
           <ol class="timeline">
             <li class="tl-item">
               <p class="tl-date" data-scramble><span lang="en">Feb – Jul 2025</span><span lang="cs">únor – červenec 2025</span></p>
@@ -282,7 +290,7 @@
         </div>
 
         <div class="block ko">
-          <h3 class="subhead" data-scramble><span lang="en">Education</span><span lang="cs">Vzdělání</span></h3>
+          <h3 class="subhead"><span data-scramble><span lang="en">Education</span><span lang="cs">Vzdělání</span></span><span class="rule" aria-hidden="true"></span><span class="n">02</span></h3>
           <ol class="timeline">
             <li class="tl-item">
               <p class="tl-date" data-scramble><span lang="en">from 2026</span><span lang="cs">od roku 2026</span></p>
@@ -313,7 +321,7 @@
     <section class="section" id="skills" aria-labelledby="skills-h">
       <div class="wrap">
         <header class="section-head ko">
-          <p class="idx" data-scramble>03</p>
+          <p class="kicker"><span class="idx" data-scramble>03</span><span class="of">/ 04</span><span class="rule" aria-hidden="true"></span><span class="meta" data-scramble><span lang="en">7 areas</span><span lang="cs">7 oblastí</span></span></p>
           <h2 id="skills-h" data-scramble><span lang="en">Skills</span><span lang="cs">Dovednosti</span></h2>
         </header>
         <div class="skills ko">
@@ -353,7 +361,7 @@
       <div class="wrap contact-grid">
         <div class="contact-main ko">
           <header class="section-head">
-            <p class="idx" data-scramble>04</p>
+            <p class="kicker"><span class="idx" data-scramble>04</span><span class="of">/ 04</span><span class="rule" aria-hidden="true"></span><span class="meta"><span lang="en">Local time</span><span lang="cs">Místní čas</span> <span data-clock>--:--</span></span></p>
             <h2 id="contact-h" data-scramble><span lang="en">Contact</span><span lang="cs">Kontakt</span></h2>
           </header>
           <p class="mail-row">
