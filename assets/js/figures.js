@@ -403,6 +403,82 @@
     },
   };
 
+  // PyQuest: a terminal session. `check` runs the puzzle three times with new
+  // numbers, every run passes, and `next` moves on. Earlier sessions scroll up
+  // the way they would in a real terminal.
+  const PUZZLES = [
+    { id: "6.4", fn: "total", run: function (a) { return a.reduce(function (s, v) { return s + v; }, 0); } },
+    { id: "6.5", fn: "largest", run: function (a) { return Math.max.apply(null, a); } },
+    { id: "6.6", fn: "count_even", run: function (a) { return a.filter(function (v) { return v % 2 === 0; }).length; } },
+    { id: "6.7", fn: "smallest", run: function (a) { return Math.min.apply(null, a); } },
+  ];
+  const PROMPT = "~/pyquest $ ";
+  const CYCLE = 6.4;
+
+  FIGURES.pyquest = {
+    fps: 20,
+    init: function (s) {
+      s.i = 0;
+      s.t0 = null;
+      s.runs = null;
+      s.history = [];
+    },
+    newRuns: function () {
+      const runs = [];
+      for (let k = 0; k < 3; k++) {
+        const a = [];
+        const n = 2 + ((Math.random() * 3) | 0);
+        for (let j = 0; j < n; j++) a.push(1 + ((Math.random() * 12) | 0));
+        runs.push(a);
+      }
+      return runs;
+    },
+    // The lines of one session up to `dt` seconds in. A line is a list of
+    // [column, text, class] pieces.
+    session: function (s, dt) {
+      const pz = PUZZLES[s.i % PUZZLES.length];
+      const nx = PUZZLES[(s.i + 1) % PUZZLES.length];
+      const typed = function (cmd, start) {
+        return cmd.slice(0, Math.max(0, Math.min(cmd.length, Math.floor((dt - start) * 14))));
+      };
+      const calls = s.runs.map(function (a) { return pz.fn + "([" + a.join(", ") + "])"; });
+      const resCol = 9 + Math.max.apply(null, calls.map(function (c) { return c.length; })) + 2;
+      const lines = [[[0, PROMPT, 2], [PROMPT.length, typed("check", 0.2), 0]]];
+      if (dt > 0.8) lines.push([[1, pz.id, 1], [6, pz.fn + "(nums)", 2]]);
+      for (let k = 0; k < 3; k++) {
+        if (dt <= 1.2 + k * 0.45) break;
+        const res = "→ " + pz.run(s.runs[k]);
+        lines.push([[1, "run " + (k + 1), 2], [9, calls[k], 0], [resCol, res, 0], [resCol + res.length + 2, "ok", 1]]);
+      }
+      if (dt > 2.8) lines.push([[1, "passed 3/3", 1]]);
+      if (dt > 3.6) lines.push([[0, PROMPT, 2], [PROMPT.length, typed("next", 3.6), 0]]);
+      if (dt > 4.3) lines.push([[1, nx.id, 1], [6, nx.fn + "(nums)", 2], [7 + nx.fn.length + 7, "▸ brief.md", 2]]);
+      return lines;
+    },
+    draw: function (s, g, t, still) {
+      if (!s.runs) s.runs = this.newRuns();
+      if (s.t0 === null) s.t0 = t;
+      let dt = still ? CYCLE : t - s.t0;
+      if (!still && dt > CYCLE) {
+        s.history = s.history.concat(this.session(s, CYCLE)).slice(-60);
+        s.i++;
+        s.t0 = t;
+        s.runs = this.newRuns();
+        dt = 0;
+      }
+      const lines = s.history.concat(this.session(s, dt));
+      const shown = lines.slice(-g.rows);
+      shown.forEach(function (line, y) {
+        line.forEach(function (piece) { g.put(piece[0], y, piece[1], piece[2]); });
+      });
+      // A blinking cursor after the last prompt that is still being typed.
+      const last = shown[shown.length - 1];
+      if (!still && last[0][1] === PROMPT && Math.floor(t * 2.5) % 2 === 0) {
+        g.put(PROMPT.length + last[1][1].length, shown.length - 1, "█", 1);
+      }
+    },
+  };
+
   // Contact: a globe drawn with ticks, turning slowly, with Jablonec nad Nisou
   // marked. A numbered ruler runs along the top.
   const HOME = { lat: 50.7243, lon: 15.1711 };

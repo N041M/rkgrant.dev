@@ -8,6 +8,10 @@
 // The footer sits on water, and a numbered ruler runs along the top edge.
 // Elements with the class `ko` are cut out of the field so their text stays
 // readable.
+//
+// The whole field scrolls at PARALLAX times the page speed. Cells are worked
+// out in scene rows, and the grid is drawn shifted by the leftover fraction of
+// a row, so it glides with the page instead of jumping a row at a time.
 (function () {
   "use strict";
 
@@ -177,8 +181,7 @@
 
   const MAX_CELLS = 17000;
   const FPS = 30;
-  const P_HERO = 0.55;
-  const P_CALM = 0.3;
+  const PARALLAX = 0.5;
   // Horizontal drift of each layer in px/s, as seen from the moving car.
   const SPEED_HILLS = 3;
   const SPEED_FAR = 6;
@@ -195,14 +198,17 @@
   let cols = 0, rows = 0, N = 0;
   let atlas = null;
   let colors = { bg: "#f3f2ee", fg: "#0b0b0b", accent: "#ff4f00" };
-  let mask, E, RA, RB, HF;
+  let mask, E, RA, HF;
   let traceBuf = new Float32Array(0);
-  let traceK0 = 0, traceCount = 0, traceGap = 70, traceAmp = 180, plotOff = 0;
+  let traceK0 = 0, traceCount = 0, traceGap = 70, traceAmp = 180;
+  // Sub-row shift of the grid in CSS px and device px, and where the footer's
+  // water starts in scene px.
+  let frac = 0, fracD = 0, seaTop = Infinity;
   let heroEl = null, shoreEl = null, koEls = [];
   let heroH = 0;
   let reduced = reducedMQ.matches;
   let started = false;
-  let raf = 0, lastDraw = 0, lastT = 0;
+  let raf = 0, lastDraw = 0, lastT = 0, lastScroll = -1;
   const pulses = [];
   const dust = [];
   let lastDust = 0;
@@ -238,6 +244,12 @@
     shoreEl = document.querySelector("[data-shore]");
     koEls = Array.from(document.querySelectorAll(".ko"));
     heroH = heroEl ? heroEl.offsetHeight : 0;
+    // The water reaches the shore spacer exactly when the page is scrolled to
+    // the end, and stays below it before that.
+    const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+    seaTop = shoreEl
+      ? shoreEl.getBoundingClientRect().top + window.scrollY - maxScroll * (1 - PARALLAX)
+      : Infinity;
   }
 
   function setup() {
@@ -253,7 +265,7 @@
       cwD = Math.max(1, Math.round(((fontPx * 350) / 550) * dpr));
       chD = Math.max(1, Math.round(((fontPx * 700) / 550) * dpr));
       cols = Math.ceil(canvas.width / cwD);
-      rows = Math.ceil(canvas.height / chD);
+      rows = Math.ceil(canvas.height / chD) + 1;
       if (cols * rows <= MAX_CELLS || scale >= 2) break;
       scale += 0.25;
     }
@@ -263,11 +275,7 @@
     mask = new Uint8Array(N);
     E = new Float32Array(N);
     RA = new Float32Array(N);
-    RB = new Float32Array(N);
-    for (let i = 0; i < N; i++) {
-      RA[i] = hash2(i, 7);
-      RB[i] = hash2(i, 13);
-    }
+    for (let i = 0; i < N; i++) RA[i] = hash2(i, 7);
     HF = new Float32Array(cols);
     readColors();
     buildAtlas();
@@ -287,10 +295,10 @@
         if (rc.width === 0 || rc.bottom < -ch || rc.top > vh + ch) continue;
         const c0 = Math.max(0, Math.floor((rc.left - padX) / cw));
         const c1 = Math.min(cols - 1, Math.floor((rc.right + padX) / cw));
-        const r0 = Math.max(0, Math.floor((rc.top - padY) / ch));
-        const r1 = Math.min(rows - 1, Math.floor((rc.bottom + padY) / ch));
+        const r0 = Math.max(0, Math.floor((rc.top - padY + frac) / ch));
+        const r1 = Math.min(rows - 1, Math.floor((rc.bottom + padY + frac) / ch));
         const ic0 = Math.floor(rc.left / cw), ic1 = Math.floor(rc.right / cw);
-        const ir0 = Math.floor(rc.top / ch), ir1 = Math.floor(rc.bottom / ch);
+        const ir0 = Math.floor((rc.top + frac) / ch), ir1 = Math.floor((rc.bottom + frac) / ch);
         for (let r = r0; r <= r1; r++) {
           const inRow = r >= ir0 && r <= ir1;
           for (let c = c0; c <= c1; c++) {
@@ -322,12 +330,11 @@
   // Samples every visible trace at each column edge, in plot-scene pixels.
   // A trace sits on its baseline and rises above it by up to traceAmp, so
   // neighbouring traces cross each other.
-  function computeTraces(t, scrollY) {
-    plotOff = scrollY * P_CALM;
+  function computeTraces(t, sceneTop) {
     traceGap = ch * TRACE_ROWS;
     traceAmp = traceGap * 2.6;
-    traceK0 = Math.floor(plotOff / traceGap) - 1;
-    const k1 = Math.ceil((plotOff + vh + traceAmp) / traceGap) + 1;
+    traceK0 = Math.floor(sceneTop / traceGap) - 1;
+    const k1 = Math.ceil((sceneTop + vh + ch + traceAmp) / traceGap) + 1;
     traceCount = k1 - traceK0 + 1;
     const stride = cols + 1;
     if (traceBuf.length < traceCount * stride) traceBuf = new Float32Array(traceCount * stride);
@@ -346,8 +353,8 @@
     }
   }
 
-  function skyCell(c, r, x, sy, t, idx) {
-    const hv = hash3(c, r, Math.floor(t * 0.4 + RA[idx] * 8));
+  function skyCell(c, r, x, sy, t) {
+    const hv = hash3(c, r, Math.floor(t * 0.4 + hash2(c, r + 5000) * 8));
     const cx = (x + t * 4) / 230, cy = sy / 115;
     const d = noise3(cx, cy, t * 0.018) * 0.62 + noise3(cx * 2.3, cy * 2.3, t * 0.03 + 5.1) * 0.38;
     const thr = 0.1 + 0.6 * smooth(L.cloudBase * 0.35, L.cloudBase * 1.25, sy);
@@ -508,7 +515,7 @@
     return -1;
   }
 
-  function heroCell(c, r, x, sy, t, idx) {
+  function heroCell(c, r, x, sy, t) {
     if (sy >= L.groundEnd) return -2;
     if (sy >= L.waterTop) return seaCell(c, r, x, sy, t);
     if (sy >= L.roadTop) return promenadeCell(x, sy, t);
@@ -517,11 +524,10 @@
     b = farBuilding(x, sy, t);
     if (b !== NOT_HERE) return b;
     if (sy >= HF[c]) return hillCell(c, sy, Math.floor((x + t * SPEED_HILLS) / cw));
-    return skyCell(c, r, x, sy, t, idx);
+    return skyCell(c, r, x, sy, t);
   }
 
-  function plotCell(c, r, y, t, idx) {
-    const sy = y + plotOff;
+  function plotCell(c, r, sy, t) {
     const top = sy - ch / 2, bot = sy + ch / 2;
     const kLo = Math.max(traceK0, Math.ceil(top / traceGap));
     const kHi = Math.min(traceK0 + traceCount - 1, Math.floor((bot + traceAmp) / traceGap));
@@ -563,7 +569,7 @@
     }
     if (curve >= 0) return curve;
     if (c % GRID === 0) return (G_GRID << 4) | 6;
-    if (hash3(c, r, Math.floor(t * 0.35 + RA[idx] * 8)) < 0.002) return (pick(S.energy, RB[idx]) << 4) | 5;
+    if (hash3(c, r, Math.floor(t * 0.35 + hash2(c, r + 7000) * 8)) < 0.002) return (pick(S.energy, hash2(r, c)) << 4) | 5;
     return -1;
   }
 
@@ -635,7 +641,7 @@
         if (k === ".") continue;
         if (fade < 1 && hash2(i + seed, j) > fade) continue;
         const px = ox + i * pD, py = oy + j * pD;
-        const cell = Math.floor(py / chD) * cols + Math.floor(px / cwD);
+        const cell = Math.floor((py + fracD) / chD) * cols + Math.floor(px / cwD);
         if (cell >= 0 && cell < N && mask[cell] === 1) continue;
         ctx.globalAlpha = alphaFor(k);
         ctx.fillStyle = k === "a" ? colors.accent : k === "w" ? colors.bg : colors.fg;
@@ -709,14 +715,15 @@
     for (let i = 0; i < dust.length; i++) {
       const d = dust[i];
       const c = Math.floor(d.x / cw);
-      const r = Math.floor((d.y - heroOff) / ch);
+      const r = Math.floor((d.y - heroOff + frac) / ch);
       if (c < 0 || c >= cols || r < 0 || r >= rows) continue;
       if (mask[r * cols + c]) continue;
       const age = (t - d.born) / d.life;
       const lvl = age < 0.3 ? 2 : age < 0.6 ? 3 : 4;
+      const yD = r * chD - fracD;
       ctx.fillStyle = colors.bg;
-      ctx.fillRect(c * cwD, r * chD, cwD, chD);
-      ctx.drawImage(atlas, d.g * cwD, lvl * chD, cwD, chD, c * cwD, r * chD, cwD, chD);
+      ctx.fillRect(c * cwD, yD, cwD, chD);
+      ctx.drawImage(atlas, d.g * cwD, lvl * chD, cwD, chD, c * cwD, yD, cwD, chD);
     }
   }
 
@@ -725,11 +732,11 @@
   function inject(px, py, radius, amount) {
     const c0 = Math.max(0, Math.floor((px - radius) / cw));
     const c1 = Math.min(cols - 1, Math.floor((px + radius) / cw));
-    const r0 = Math.max(0, Math.floor((py - radius) / ch));
-    const r1 = Math.min(rows - 1, Math.floor((py + radius) / ch));
+    const r0 = Math.max(0, Math.floor((py - radius + frac) / ch));
+    const r1 = Math.min(rows - 1, Math.floor((py + radius + frac) / ch));
     for (let r = r0; r <= r1; r++) {
       for (let c = c0; c <= c1; c++) {
-        const d = Math.hypot((c + 0.5) * cw - px, (r + 0.5) * ch - py) / radius;
+        const d = Math.hypot((c + 0.5) * cw - px, (r + 0.5) * ch - frac - py) / radius;
         if (d < 1) {
           const idx = r * cols + c;
           const v = amount * (1 - d);
@@ -750,7 +757,7 @@
       const R = age * 950;
       const strength = 0.95 * (1 - age / 1.4);
       for (let r = 0; r < rows; r++) {
-        const dy = (r + 0.5) * ch - pulse.y;
+        const dy = (r + 0.5) * ch - frac - pulse.y;
         for (let c = 0; c < cols; c++) {
           const d = Math.abs(Math.hypot((c + 0.5) * cw - pulse.x, dy) - R);
           if (d < 34) {
@@ -777,14 +784,16 @@
     L.farCityH = H * 0.34;
     L.groundEnd = H + vh * 0.3;
 
-    const heroOff = scrollY * P_HERO;
+    const heroOff = scrollY * PARALLAX;
+    const rowOff = Math.floor(heroOff / ch);
+    frac = heroOff - rowOff * ch;
+    fracD = Math.round(frac * dpr);
     const heroFade = heroEl ? 1 - smooth(H * 0.3, H * 1.0, scrollY) : 0;
     const heroVisible = heroFade > 0 && L.groundEnd - heroOff > 0;
     const needCalm = heroFade < 1 || vh + heroOff > L.groundEnd;
-    if (needCalm) computeTraces(t, scrollY);
+    if (needCalm) computeTraces(t, rowOff * ch);
     if (heroVisible) computeHills(t);
     buildMask();
-    const shoreTop = shoreEl ? shoreEl.getBoundingClientRect().top : Infinity;
 
     if (!reduced) {
       const decay = Math.pow(0.87, dt * 30);
@@ -797,9 +806,9 @@
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     for (let r = 0; r < rows; r++) {
-      const y = (r + 0.5) * ch;
-      const sy = y + heroOff;
-      const yD = r * chD;
+      const sr = r + rowOff;
+      const sy = (sr + 0.5) * ch;
+      const yD = r * chD - fracD;
       const base = r * cols;
       for (let c = 0; c < cols; c++) {
         const idx = base + c;
@@ -811,12 +820,12 @@
         if (e > 0.06) {
           const g = pick(S.energy, hash3(c, r, Math.floor(t * 14 + RA[idx] * 10)));
           code = (g << 4) | (7 + (e > 0.55 ? 0 : e > 0.28 ? 1 : 2));
-        } else if (y > shoreTop) {
-          code = waterCell(x, y - shoreTop, t);
+        } else if (sy > seaTop) {
+          code = waterCell(x, sy - seaTop, t);
         } else {
           let hc = -2;
-          if (heroVisible && heroFade > RB[idx]) hc = heroCell(c, r, x, sy, t, idx);
-          code = hc === -2 ? (needCalm ? plotCell(c, r, y, t, idx) : -1) : hc;
+          if (heroVisible && heroFade > hash2(c * 131 + 17, sr)) hc = heroCell(c, sr, x, sy, t);
+          code = hc === -2 ? (needCalm ? plotCell(c, sr, sy, t) : -1) : hc;
         }
         if (code >= 0) {
           ctx.drawImage(atlas, (code >> 4) * cwD, (code & 15) * chD, cwD, chD, c * cwD, yD, cwD, chD);
@@ -837,7 +846,9 @@
 
   function frame(now) {
     raf = requestAnimationFrame(frame);
-    if (now - lastDraw < 1000 / FPS - 2) return;
+    const scrollNow = window.scrollY;
+    if (scrollNow === lastScroll && now - lastDraw < 1000 / FPS - 2) return;
+    lastScroll = scrollNow;
     const t = now / 1000;
     const dt = lastT ? Math.min(0.1, t - lastT) : 1 / FPS;
     lastT = t;

@@ -314,6 +314,22 @@ h2 { font: 400 clamp(33px, 5vw, 55px)/1 var(--mono); }
 }
 .card:hover { transform: translate(-3px, -3px); box-shadow: 6px 6px 0 var(--accent); }
 
+/* A card that spans the grid puts its figure beside the text. */
+@media (min-width: 881px) {
+  .card.wide {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .card.wide .fig {
+    display: flex;
+    flex-direction: column;
+    border-bottom: 0;
+    border-right: 1px solid var(--fg);
+  }
+  .card.wide .plot { flex: 1; height: auto; min-height: 140px; }
+}
+
 /* Figures are framed like plots: dotted grid columns behind the drawing and a
    caption underneath. */
 .fig {
@@ -359,6 +375,7 @@ h2 { font: 400 clamp(33px, 5vw, 55px)/1 var(--mono); }
   padding: 20px 22px 22px;
 }
 .card-body > p:not([class]) { font-size: 15.5px; line-height: 1.6; }
+.card-body code { font: 0.92em var(--mono); }
 .card-meta {
   display: flex;
   flex-wrap: wrap;
