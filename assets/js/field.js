@@ -280,7 +280,7 @@
   let mask, E, RA;
   // Per column: terrain height, terrain biome, and the biome of the front
   // layer, the middle layer and the road and water.
-  let HF, HB, NBI, MBI, BB, SEA;
+  let HF, HB, NBI, MBI, BB, COAST, FARH;
   let tone, rowInv, rowAlt, rowFill = [];
   // Per row: tone is 1 on rows dark enough for light glyphs, rowInv flips
   // ink to the page colour there, and rowAlt picks the brighter scene colours.
@@ -411,7 +411,8 @@
     HB = new Uint8Array(cols);
     NBI = new Uint8Array(cols);
     MBI = new Uint8Array(cols);
-    SEA = new Float32Array(cols);
+    COAST = new Float32Array(cols);
+    FARH = new Float32Array(cols);
     BB = new Uint8Array(cols);
     tone = new Float32Array(rows);
     rowInv = new Uint8Array(rows);
@@ -583,9 +584,9 @@
     const H = L.H;
     switch (biome) {
       case CITY: return H * 0.28 * ridge(u, 1.7);
-      case BRIDGE: return H * 0.2 + H * 0.09 * ridge(u * 0.8, 3.1);
+      case BRIDGE: return 0;
       case HIGHWAY: return H * 0.14 * ridge(u * 0.7, 6.2);
-      case SHORE: return H * 0.2;
+      case SHORE: return ch * 2;
       case COUNTRY:
       case RALLY: return H * 0.2 * (0.35 + 0.65 * (noise3(u * 0.6, 11.1, 0.3) * 0.5 + 0.5));
       case VILLAGE: return H * 0.18 * (0.4 + 0.6 * (noise3(u * 0.7, 41.3, 0.6) * 0.5 + 0.5));
@@ -599,29 +600,38 @@
     }
   }
 
+  // The far layer blends TERRAIN_BLEND of a stretch either side of the point
+  // where one place meets the next, so hills rise and fall and the sea opens
+  // and closes gradually. COAST_OF is how much of the distance is sea in each
+  // place, and FAR_OF how high the far hills rise above the horizon, as a
+  // share of the scene.
+  const TERRAIN_BLEND = 0.25;
+  const COAST_OF = [0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0];
+  const FAR_OF = [0.05, 0.08, 0.05, 0.16, 0.06, 0.08, 0, 0.06, 0.12, 0.05, 0.07];
+
   function computeColumns(t) {
     for (let c = 0; c < cols; c++) {
       const x = (c + 0.5) * cw;
       // Which place this column shows is decided in front-layer terms. The
       // hills keep their own, slower drift for their shape.
       const wn = x + t * SPEED_NEAR;
-      const b = wn / BIOME_LEN;
-      const i = Math.floor(b);
-      const w = smooth(1 - BLEND, 1, b - i);
+      const b = wn / BIOME_LEN + BLEND / 2;
+      const k = Math.floor(b), f = b - k;
+      const prev = ORDER[mod(k - 1, NB)], cur = ORDER[mod(k, NB)], next = ORDER[mod(k + 1, NB)];
+      const wPrev = 1 - smooth(-TERRAIN_BLEND, TERRAIN_BLEND, f);
+      const wNext = smooth(1 - TERRAIN_BLEND, 1 + TERRAIN_BLEND, f);
+      const wCur = 1 - wPrev - wNext;
       const u = (x + t * SPEED_HILLS) / 520;
-      const cur = ORDER[mod(i, NB)], nxt = ORDER[mod(i + 1, NB)];
-      let tb = cur;
-      let h = terrainHeight(cur, u);
-      // How many rows of sea show behind the road, blended like the height.
-      let sea = seaBehind(cur);
-      if (w > 0) {
-        h += (terrainHeight(nxt, u) - h) * w;
-        sea += (seaBehind(nxt) - sea) * w;
-        if (hash2(Math.floor(wn / (cw * 3)), 5) < w) tb = nxt;
-      }
+      let h = wCur * terrainHeight(cur, u);
+      if (wPrev > 0.001) h += wPrev * terrainHeight(prev, u);
+      if (wNext > 0.001) h += wNext * terrainHeight(next, u);
       HF[c] = L.roadTop - h;
-      HB[c] = tb;
-      SEA[c] = Math.min(sea * seaRows(), h / ch);
+      // The land's look changes at the meeting point, with a ragged edge.
+      const toward = f < 0.5 ? prev : next;
+      HB[c] = hash2(Math.floor(wn / (cw * 3)), 5) < smooth(-0.04, 0.04, Math.min(f, 1 - f)) ? cur : toward;
+      COAST[c] = wPrev * COAST_OF[prev] + wCur * COAST_OF[cur] + wNext * COAST_OF[next];
+      const far = wPrev * FAR_OF[prev] + wCur * FAR_OF[cur] + wNext * FAR_OF[next];
+      FARH[c] = far * L.H * (0.35 + 0.65 * ridge((x + t * SPEED_HILLS * 0.5) / 700, 9.7));
       BB[c] = placeAt(Math.floor(wn / cw));
       NBI[c] = nearBiomeAt(x, t);
       // A middle-layer object takes the place its centre is in right now.
@@ -629,11 +639,6 @@
       const lotX = (mlot + 0.5) * LOT_MID * cw - t * SPEED_MID;
       MBI[c] = biomeAt(lotX + t * SPEED_NEAR, BIOME_LEN, mlot, 31);
     }
-  }
-
-  // The sea shows behind the road along the bridge and the shore road.
-  function seaBehind(p) {
-    return p === BRIDGE || p === SHORE ? 1 : 0;
   }
 
   // Samples every visible trace at each column edge, in scene pixels. A trace
@@ -679,9 +684,6 @@
     return bits;
   }
 
-  // The sky texture changes slowly, so one noise sample serves two columns.
-  let zzKey = -1, zzVal = 0;
-
   function skyCell(c, sr, x, sy, t) {
     // Clouds only form in the upper part of the sky. At dusk they take on the
     // colour of the sunset.
@@ -724,14 +726,6 @@
         return tw < 0.72 ? (G_DOT << 7) | cr(NIGHT, 2) : tw < 0.92 ? (G_PLUS << 7) | cr(NIGHT, 1) : (G_SPARK << 7) | cr(NIGHT, 0);
       }
     }
-    if (sy < L.roadTop) {
-      const key = sr * 4096 + (c >> 1);
-      if (key !== zzKey) {
-        zzKey = key;
-        zzVal = noise3(((c | 1) * cw) / 320 + t * 0.012, sy / 150, 9.1);
-      }
-      if (zzVal > 0.42) return ((c & 1 ? G_BACK : G_SLASH) << 7) | cr(SKY, zzVal > 0.58 ? 1 : 2);
-    }
     const hs = hash2(Math.floor((x + t * 9) / cw), sr + 400);
     if (hs < 0.01) return ((hs < 0.006 ? G_DASH : G_DOT) << 7) | 4;
     return c % GRID === 0 ? (G_GRID << 7) | 6 : -1;
@@ -748,36 +742,19 @@
     const wc = Math.floor(((c + 0.5) * cw + t * SPEED_HILLS) / cw);
     const hv = hash2(wc, sr + 1900);
     const edge = depth < Math.max(1, (Math.abs(slope) * cw) / ch + 0.6);
-    // Water behind the road, out to the horizon or to the hills across the
-    // bay, with a strip of beach and a line of surf along the shore road. A
-    // low sun or the moon lays a path of glitter across it.
-    const ly = Math.floor((L.roadTop - sy) / ch);
-    if (ly < SEA[c]) {
-      if (HB[c] === SHORE && ly === 0) return hv < 0.45 ? (pick(S.base, hv * 2.2) << 7) | cr(SAND, 0) : -1;
-      if (HB[c] === SHORE && ly === 1) {
-        const surf = hash2(Math.floor(((c + 0.5) * cw + t * 5) / (cw * 2)), sr + 2600);
-        return surf < 0.7 ? ((surf < 0.35 ? G_TILDE : G_DASH) << 7) | cr(SNOW, surf < 0.35 ? 0 : 1) : -1;
-      }
-      const top = Math.ceil(SEA[c]) - 1;
-      if (ly === top) return (G_H << 7) | cr(WATER, 1);
-      const deep = top - ly;
-      const cx = (c + 0.5) * cw;
-      if (env.sunR > 0 && env.dusk > 0.2 && hv < 0.55 && Math.abs(cx - env.sunX) < env.sunR * (0.5 + deep * 0.08)) {
-        return (G_HH << 7) | cr(DUSK, 0);
-      }
-      if (env.moonR > 0 && env.night > 0.5 && hv < 0.4 && Math.abs(cx - env.moonX) < env.moonR * (0.4 + deep * 0.06)) {
-        return (G_H << 7) | cr(NIGHT, 1);
-      }
-      const wx = Math.floor((cx + t * (4 + deep * 1.5)) / cw);
-      const hw = hash2(Math.floor(wx / 3), sr + 2500);
-      if (hw < 0.16 + deep * 0.02) return ((hw < 0.07 ? G_TILDE : G_DASH) << 7) | cr(WATER, deep < 4 ? 2 : 1);
-      return -1;
-    }
     let eg = G_DASH;
     if (slope < -0.3) eg = G_SLASH;
     else if (slope > 0.3) eg = G_BACK;
     else if (hl > h && hr > h) eg = G_CARET;
     switch (HB[c]) {
+      case SHORE: {
+        // A strip of beach with a line of surf where it meets the sea.
+        if (edge && sy < L.roadTop - ch) {
+          const surf = hash2(Math.floor(((c + 0.5) * cw + t * 5) / (cw * 2)), sr + 2600);
+          return surf < 0.7 ? ((surf < 0.35 ? G_TILDE : G_DASH) << 7) | cr(SNOW, surf < 0.35 ? 0 : 1) : -1;
+        }
+        return hv < 0.45 ? (pick(S.base, hv * 2.2) << 7) | cr(SAND, 0) : -1;
+      }
       case MOUNTAINS: {
         if (edge) return (eg << 7) | cr(ROCK, 0);
         // High peaks keep snow on top.
@@ -883,9 +860,6 @@
   const FOX = makeSprite(["b.b.........", "bbb.........", "wbbbbbbbb...", ".bbbbbbbbbbb", ".b.b...b.bbw", ".b.b...b.b.."]);
   const FOX_STEP = makeSprite(["b.b.........", "bbb.........", "wbbbbbbbb...", ".bbbbbbbbbbb", "..bb....bbbw", "..b.b..b.b.."]);
   const PALM = makeSprite(["..ff....ff..", ".f..ff.ff..f", "f....fff...f", ".....tf.....", ".....t......", "....t.......", "....t.......", "....t.......", "...t........", "...t........", "...t........", "...t........", "..tt........", "..tt........"]);
-  // The mast has a column of cells to itself, so the sail keeps its colour.
-  const SAILBOAT = makeSprite(["...m....", "...ms...", "...mss..", "...msss.", "...mssss", "...m....", "hhhhhhhh", ".hhhhhh."]);
-  const SHIP = makeSprite(["....cc......", "..ssssss....", "hhhhhhhhhhhh", ".hhhhhhhhhh."]);
   const SNOWMAN = makeSprite(["..ss..", "..ss..", ".ssss.", ".ssss.", "ssssss", "ssssss"]);
   const PERSON = makeSprite([".hh.", ".hh.", "ssss", "ssss", ".ss.", ".pp.", ".p.p", ".p.p"]);
   const PERSON_WAVE = makeSprite(["s.hh", "s.hh", "ssss", ".sss", ".ss.", ".pp.", ".p.p", ".p.p"]);
@@ -895,8 +869,6 @@
   const RABBIT_COLOURS = { b: cr(ROCK, 1), w: cr(SNOW, 0) };
   const FOX_COLOURS = { b: cr(CLAY, 0), w: cr(SNOW, 0) };
   const PALM_COLOURS = { f: cr(LEAF, 0), t: cr(SAND, 0) };
-  const SAIL_COLOURS = { m: 1, s: cr(SNOW, 0), h: cr(CLAY, 0) };
-  const SHIP_COLOURS = { c: cr(CLAY, 0), s: cr(SLATE, 0), h: cr(SLATE, 1) };
   const SNOWMAN_COLOURS = { s: cr(SNOW, 0) };
   const SHIRTS = [7, cr(WATER, 0), cr(WINDOW, 0), cr(LEAF, 0), cr(PURPLE, 0), cr(SNOW, 0)];
   const PEOPLE_COLOURS = SHIRTS.map(function (s) { return { h: cr(SAND, 0), s: s, p: cr(SLATE, 0), k: 1 }; });
@@ -1225,28 +1197,38 @@
     return NOT_HERE;
   }
 
-  // The Czech village has white houses with red tiled roofs and chimneys,
-  // apple trees, flower beds and a picket fence.
+  // Village houses are white or pastel, with a grey plinth, a dark door and a
+  // red tiled roof in courses, with eaves and a chimney through the slope.
+  // Their windows light up at night.
+  const HOUSE_WALLS = [cr(PAPER, 0), cr(WHEAT, 2), cr(DUSK, 2), cr(SAND, 2), cr(SKY, 2)];
+  function houseWindow(id) {
+    if (env.night <= 0.4) return cr(SKY, 1);
+    return hash2(id, 345) < 0.75 ? cr(WINDOW, 0) : cr(SLATE, 0);
+  }
+
+  function villageHouse(lot, lx, ly) {
+    if (ly <= 3) {
+      if (lx < 2 || lx > 11) return NOT_HERE;
+      if (lx === 7 && ly <= 1) return (G_ROCK_M << 7) | cr(ROCK, 0);
+      if (ly === 0) return (G_ROCK_M << 7) | cr(ROCK, 2);
+      if ((lx === 4 || lx === 9) && ly === 2) return (G_ROCK_M << 7) | houseWindow(lot * 5 + lx);
+      return (G_ROCK_M << 7) | HOUSE_WALLS[(hash2(lot, 342) * HOUSE_WALLS.length) | 0];
+    }
+    if (lx === 9 && ly >= 6 && ly <= 8) return (G_ROCK_M << 7) | cr(ROCK, 1);
+    const k = ly - 4, l = 1 + k, r = 12 - k;
+    if (lx < l || lx > r) return NOT_HERE;
+    if (lx === l) return (G_ROCK_L << 7) | cr(CLAY, 0);
+    if (lx === r) return (G_ROCK_R << 7) | cr(CLAY, 0);
+    return (G_ROCK_M << 7) | cr(CLAY, k & 1 ? 0 : 1);
+  }
+
+  // The Czech village has houses with red tiled roofs, apple trees, flower
+  // beds and a picket fence.
   function villageNear(wc, ly) {
     const lot = Math.floor(wc / LOT_NEAR);
     const lx = wc - lot * LOT_NEAR;
     const h = hash2(lot, 341);
-    if (h < 0.55 && lx >= 1 && lx <= 12 && ly <= 9) {
-      if (ly <= 3) {
-        if (lx === 1 || lx === 12) return NOT_HERE;
-        if (lx === 2 || lx === 11) return (G_PIPE << 7) | 1;
-        if (lx === 7 && ly <= 1) return (G_DARK << 7) | cr(ROCK, 0);
-        if ((lx === 4 || lx === 9) && ly === 2) return (G_SMALL << 7) | (env.night > 0.4 ? cr(WINDOW, 0) : cr(SKY, 1));
-        return -1;
-      }
-      if (lx === 10 && ly <= 7) return (G_ROCK_M << 7) | cr(ROCK, 1);
-      const k = ly - 4, l = 1 + k, r = 12 - k;
-      if (lx < l || lx > r) return NOT_HERE;
-      if (l >= r - 1) return (G_CARET << 7) | cr(CLAY, 0);
-      if (lx === l) return (G_SLASH << 7) | cr(CLAY, 0);
-      if (lx === r) return (G_BACK << 7) | cr(CLAY, 0);
-      return (G_SHINGLE << 7) | cr(CLAY, 1);
-    }
+    if (h < 0.55 && lx >= 1 && lx <= 12 && ly <= 9) return villageHouse(lot, lx, ly);
     if (h < 0.8) {
       const dx = (lx - 6) / 3.2, dy = (ly + 0.5 - 4) / 2;
       const d = dx * dx + dy * dy;
@@ -1409,7 +1391,8 @@
   function wideMid(wc, ly, t) {
     let lot = Math.floor(wc / 120);
     let lx = wc - lot * 120 - 30;
-    if (lx >= 0 && lx <= 40 && ly <= 8 && hash2(lot, 391) < 0.45 && midPlace(lot * 120 + 50, t) === HIGHWAY) {
+    if (lx >= 0 && lx <= 40 && ly <= 8 && hash2(lot, 391) < 0.45 && midPlace(lot * 120 + 50, t) === HIGHWAY &&
+        Math.abs(transitionNear(Math.floor(((lot * 120 + 50.5) * cw + t * (SPEED_NEAR - SPEED_MID)) / cw)).d) > 80) {
       return overpass(lx, ly);
     }
     lot = Math.floor(wc / 110);
@@ -1443,26 +1426,64 @@
     return lx === 1 ? (G_TRI << 7) | 1 : NOT_HERE;
   }
 
-  // A church with a green onion dome on its tower.
+  // A white church whose tower has a green onion dome.
   function church(lx, ly) {
+    const wall = cr(PAPER, 0);
+    const glass = env.night > 0.4 ? cr(WINDOW, 1) : cr(SLATE, 1);
     if (lx <= 9) {
-      if (ly > 4) return NOT_HERE;
-      if (ly === 4) return (G_ROCK_T << 7) | cr(CLAY, 0);
-      if (lx === 0) return (G_PIPE << 7) | cr(SLATE, 0);
-      if ((lx === 3 || lx === 6) && ly === 2) return (G_SMALL << 7) | (env.night > 0.4 ? cr(WINDOW, 1) : cr(SLATE, 2));
-      return -1;
+      if (ly <= 3) return (G_ROCK_M << 7) | ((lx === 3 || lx === 6) && (ly === 1 || ly === 2) ? glass : wall);
+      if (ly === 4) return ((lx === 0 ? G_ROCK_L : G_ROCK_M) << 7) | cr(CLAY, 0);
+      if (ly === 5 && lx >= 1) return ((lx === 1 ? G_ROCK_L : G_ROCK_M) << 7) | cr(CLAY, 1);
+      return NOT_HERE;
     }
-    if (ly <= 9) {
-      if (lx === 10 || lx === 12) return (G_PIPE << 7) | cr(SLATE, 0);
-      return ly === 7 ? (G_SMALL << 7) | (env.night > 0.4 ? cr(WINDOW, 1) : cr(SLATE, 1)) : -1;
-    }
-    if (ly === 10) return (G_ROCK_T << 7) | cr(PINE, 0);
+    if (ly <= 9) return (G_ROCK_M << 7) | (lx === 11 && ly === 7 ? glass : wall);
+    if (ly === 10) return ((lx === 10 ? G_ROCK_L : lx === 12 ? G_ROCK_R : G_ROCK_M) << 7) | cr(PINE, 0);
     if (lx !== 11) return NOT_HERE;
-    if (ly === 11) return (G("♠") << 7) | cr(PINE, 0);
+    if (ly === 11) return (G_TRI << 7) | cr(PINE, 0);
     return ly === 12 ? (G("†") << 7) | 1 : NOT_HERE;
   }
 
   // Ships on the horizon head one way and sailboats nearer in head the other.
+  // A container ship has a white bridge, a red funnel and a deck of
+  // containers, and a ferry has a row of windows that are lit at night.
+  const CONTAINER_SHIP = makeArt([
+    "  █      ",
+    " ▐█▄▄▄▄▄ ",
+    "▜███████▛",
+  ], [
+    "..a......",
+    ".ww12341.",
+    "sssssssss",
+  ]);
+  const FERRY = makeArt([
+    "   ▄▄    ",
+    " ▟█████▙ ",
+    "▜███████▛",
+  ], [
+    "...aa....",
+    ".wwLwLww.",
+    "sssssssss",
+  ]);
+  const SAIL_SMALL = makeArt([
+    " ▐▖ ",
+    " ▐█ ",
+    " ▐█▖",
+    "▜██▛",
+  ], [
+    ".ks.",
+    ".ks.",
+    ".kss",
+    "hhhh",
+  ]);
+  // Sails and hulls come in a few pairings.
+  const BOAT_COLOURS = [
+    { s: cr(PAPER, 0), j: cr(PAPER, 0), h: cr(WATER, 0) },
+    { s: 7, j: cr(PAPER, 0), h: cr(PAPER, 0) },
+    { s: cr(WINDOW, 0), j: cr(WINDOW, 0), h: cr(CLAY, 0) },
+    { s: cr(PAPER, 0), j: 7, h: cr(CLAY, 0) },
+    { s: cr(SKY, 0), j: cr(PAPER, 0), h: cr(SLATE, 0) },
+  ];
+
   function seaRows() {
     return Math.max(4, Math.round((L.H * 0.2) / ch));
   }
@@ -1472,7 +1493,8 @@
     const sc = wc - Math.floor((t * 10) / cw);
     const sl = Math.floor(sc / 70);
     if (hash2(sl, 362) < 0.6) {
-      const p = spriteCell(SHIP, sc - sl * 70 - 5 - ((hash2(sl, 363) * 30) | 0), ly - (sea - 1), SHIP_COLOURS);
+      const ship = hash2(sl, 367) < 0.5 ? CONTAINER_SHIP : FERRY;
+      const p = artCell(ship, sc - sl * 70 - 5 - ((hash2(sl, 363) * 30) | 0), ly - (sea - 1));
       if (p !== NOT_HERE) return p;
     }
     const bc = wc + Math.floor((t * 6) / cw);
@@ -1481,7 +1503,8 @@
       // Sailboats keep out past the surf.
       const near = Math.round(sea * 0.4);
       const base = near + ((hash2(bl, 365) * Math.max(1, sea - 4 - near)) | 0);
-      return spriteCell(SAILBOAT, bc - bl * 38 - 4 - ((hash2(bl, 366) * 20) | 0), ly - base, SAIL_COLOURS);
+      const keys = BOAT_COLOURS[(hash2(bl, 368) * BOAT_COLOURS.length) | 0];
+      return artCell(SAIL_SMALL, bc - bl * 38 - 4 - ((hash2(bl, 366) * 20) | 0), ly - base, keys);
     }
     return NOT_HERE;
   }
@@ -1493,11 +1516,11 @@
     const h = hash2(lot, 372);
     if (h < 0.45 && lx <= 4) {
       if (ly <= 1) {
-        if (lx === 0 || lx === 4) return (G_PIPE << 7) | cr(SLATE, 1);
-        return ly === 1 && lx === 2 && env.night > 0.4 ? (G_SMALL << 7) | cr(WINDOW, 1) : -1;
+        if (ly === 1 && (lx === 1 || lx === 3)) return (G_ROCK_M << 7) | (env.night > 0.4 ? houseWindow(lot * 5 + lx) : cr(SLATE, 2));
+        return (G_ROCK_M << 7) | HOUSE_WALLS[(hash2(lot, 374) * HOUSE_WALLS.length) | 0];
       }
-      if (ly === 2) return (G_ROCK_T << 7) | cr(CLAY, 1);
-      if (ly === 3 && lx >= 1 && lx <= 3) return (G_ROCK_T << 7) | cr(CLAY, 1);
+      if (ly === 2) return ((lx === 0 ? G_ROCK_L : lx === 4 ? G_ROCK_R : G_ROCK_M) << 7) | cr(CLAY, 1);
+      if (ly === 3 && lx >= 1 && lx <= 3) return ((lx === 1 ? G_ROCK_L : lx === 3 ? G_ROCK_R : G_ROCK_M) << 7) | cr(CLAY, 1);
       return NOT_HERE;
     }
     if (h < 0.8 && ly <= 2) {
@@ -1557,6 +1580,8 @@
     s: cr(SLATE, 0), S: cr(SLATE, 1),
     g: cr(LEAF, 0), G: cr(LEAF, 1),
     x: cr(SNOW, 0),
+    b: cr(WATER, 0), y: cr(WINDOW, 0),
+    1: 7, 2: cr(WATER, 0), 3: cr(LEAF, 1), 4: cr(WINDOW, 0),
   };
 
   function makeArt(rows, colours) {
@@ -1581,15 +1606,18 @@
     return { w: w, h: h, glyph: glyph, key: key };
   }
 
-  // The code for cell (lx, ly) of a piece of art whose bottom-left cell is (0, 0).
-  function artCell(art, lx, ly) {
+  // The code for cell (lx, ly) of a piece of art whose bottom-left cell is
+  // (0, 0). Colours in `keys` take the place of the usual ones, so one piece
+  // of art can come in several colours.
+  function artCell(art, lx, ly, keys) {
     if (lx < 0 || lx >= art.w || ly < 0 || ly >= art.h) return NOT_HERE;
     const i = (art.h - 1 - ly) * art.w + lx;
     const g = art.glyph[i];
     if (g === -2) return NOT_HERE;
     if (g === -1) return -1;
     const k = art.key[i];
-    return (g << 7) | (k === "L" ? (env.night > 0.4 ? cr(WINDOW, 0) : cr(SKY, 1)) : ART_KEYS[k]);
+    if (k === "L") return (g << 7) | (env.night > 0.4 ? cr(WINDOW, 0) : cr(SKY, 1));
+    return (g << 7) | (keys && keys[k] !== undefined ? keys[k] : ART_KEYS[k]);
   }
 
   const POST = makeArt(["│", "│", "│"], ["k", "k", "k"]);
@@ -1828,19 +1856,17 @@
     road: "chequer",
     below: { off: 0, slope: 0.5, w: 5 },
   };
-  // Into the village past its name sign, a wayside cross and a linden tree.
+  // Into the village past a wayside cross and a linden tree.
   TRANS[COUNTRY] = {
-    clear: [-15, 26],
+    clear: [-3, 26],
     near: linden,
-    arts: [[-9, POST], [3, CROSS]],
-    panels: [{ x: -15, y: 3, w: 12, h: 3, text: "LUČANY", bg: SIGN_WHITE, fg: cr(INKD, 0) }],
+    arts: [[3, CROSS]],
     below: { off: -4, slope: 0.5, w: 6 },
   };
   // Out of the village and past a hunting stand into the forest.
   TRANS[VILLAGE] = {
-    clear: [-15, 13],
-    arts: [[-9, POST], [4, STAND]],
-    panels: [{ x: -15, y: 3, w: 12, h: 3, text: "LUČANY", bg: SIGN_WHITE, fg: cr(INKD, 0), strike: true }],
+    clear: [-3, 13],
+    arts: [[4, STAND]],
     below: { off: 0, slope: 0.5, w: 6 },
   };
   // Through a rock cutting into the mountains.
@@ -1991,13 +2017,16 @@
     return swell(x, t, wi, fade);
   }
 
+  // Swell on the sea in front of the road, over the same textured surface as
+  // the sea behind it, which stops towards the bottom of the scene. The
+  // surface is the same all along a row, so it costs nothing to redraw.
   function swell(x, t, wi, fade) {
     const wc = Math.floor((x + t * (5 + wi * 2) + Math.sin(t * 0.9 + wi * 0.7) * cw) / cw);
     const segLen = 2 + ((hash2(wi, 71) * 6) | 0);
     const hs = hash2(Math.floor(wc / segLen), wi + 131);
     const dens = Math.min(0.45, 0.1 + wi * 0.035) * fade;
     if (hs < dens) return (S.water[((hs / dens) * S.water.length) | 0] << 7) | cr(WATER, wi < 4 ? 2 : 1);
-    return -1;
+    return fade > 0.4 ? (G_SNOWFIELD << 7) | cr(WATER, 2) : -1;
   }
 
   // A mountain lake that mirrors the peaks behind it.
@@ -2157,7 +2186,66 @@
     b = midCell(x, sy, t, MBI[c]);
     if (b !== NOT_HERE) return b;
     if (sy >= HF[c]) return terrainCell(c, sr, sy, t);
+    b = distantCell(c, sr, sy, t);
+    if (b !== NOT_HERE) return b;
     return skyCell(c, sr, x, sy, t);
+  }
+
+  // Behind the land lies the distance, under one flat horizon for every
+  // place. Along the coast the distance is sea, and inland it is a plain.
+  // Coming to the coast, the sea shows first as a strip on the horizon and
+  // widens as the coast comes nearer. Faint hills rise beyond the horizon,
+  // except over the open sea. A low sun or the moon lays a path of glitter
+  // across the water.
+  function distantCell(c, sr, sy, t) {
+    const ly = Math.floor((L.roadTop - sy) / ch);
+    const hz = seaRows();
+    const cx = (c + 0.5) * cw;
+    if (ly < hz) {
+      const land = (L.roadTop - HF[c]) / ch;
+      const seaFrom = hz - COAST[c] * (hz - land);
+      if (COAST[c] > 0.02 && ly >= seaFrom) {
+        if (ly === hz - 1) return (G_H << 7) | cr(WATER, 1);
+        const deep = hz - 1 - ly;
+        const hv = hash2(Math.floor(cx / cw), sr + 1900);
+        if (env.sunR > 0 && env.dusk > 0.2 && hv < 0.55 && Math.abs(cx - env.sunX) < env.sunR * (0.5 + deep * 0.08)) {
+          return (G_HH << 7) | cr(DUSK, 0);
+        }
+        if (env.moonR > 0 && env.night > 0.5 && hv < 0.4 && Math.abs(cx - env.moonX) < env.moonR * (0.4 + deep * 0.06)) {
+          return (G_H << 7) | cr(NIGHT, 1);
+        }
+        const wx = Math.floor((cx + t * (4 + deep * 1.5)) / cw);
+        const hw = hash2(Math.floor(wx / 3), sr + 2500);
+        if (hw < 0.12 + deep * 0.02) return ((hw < 0.05 ? G_TILDE : G_DASH) << 7) | cr(WATER, 1);
+        return (G_SNOWFIELD << 7) | cr(WATER, 2);
+      }
+      const hv = hash2(Math.floor((cx + t * SPEED_HILLS * 0.5) / cw), sr + 1700);
+      // A thin line of sand where the far coast meets the sea.
+      if (COAST[c] > 0.02 && ly === Math.ceil(seaFrom) - 1 && ly >= Math.floor(land)) return (G_US << 7) | cr(SAND, 0);
+      if (ly === hz - 1) return hv < 0.75 ? (G_H << 7) | cr(SLATE, 2) : -1;
+      return hv < 0.05 ? (pick(S.base, hv * 18) << 7) | plainColour(HB[c]) : -1;
+    }
+    const top = hz + FARH[c] / ch;
+    if (ly >= top) return NOT_HERE;
+    if (ly >= top - 1) {
+      const slope = ((c < cols - 1 ? FARH[c + 1] : FARH[c]) - (c > 0 ? FARH[c - 1] : FARH[c])) / (2 * cw);
+      const g = slope > 0.3 ? G_SLASH : slope < -0.3 ? G_BACK : G_DASH;
+      return (g << 7) | cr(SLATE, 2);
+    }
+    return hash2(Math.floor((cx + t * SPEED_HILLS * 0.5) / cw), sr + 1800) < 0.03 ? (G_DOT << 7) | cr(SLATE, 2) : -1;
+  }
+
+  function plainColour(p) {
+    switch (p) {
+      case DESERT: return cr(SAND, 2);
+      case COUNTRY:
+      case RALLY:
+      case VILLAGE: return cr(GRASS, 2);
+      case WINTER: return cr(SNOW, 2);
+      case FOREST:
+      case MOUNTAINS: return cr(PINE, 2);
+      default: return cr(SLATE, 2);
+    }
   }
 
   // ----------------------------------------------------------------- plot ---
@@ -2280,28 +2368,52 @@
     return Math.floor((sceneY - heroOff + frac) / ch);
   }
 
-  // Boats sail across the water in front of the city and the bridge, nearer
+  // Sailboats cross the water in front of the city and the bridge, nearer
   // than the bridge piers, and only where there is water under the whole hull.
-  const BOAT = [" |\\", " |_\\", "\\___/"];
+  // Each has a mainsail and a jib, leaves a short wake and shows a light at
+  // the masthead at night.
+  const BOAT_ART = makeArt([
+    "    ▐     ",
+    "   ▗▐▖    ",
+    "   ▟▐█    ",
+    "  ▗█▐█▖   ",
+    "  ▟█▐██   ",
+    " ▗██▐██▙  ",
+    "▜████████▛",
+  ], [
+    "....k.....",
+    "...jks....",
+    "...jks....",
+    "..jjkss...",
+    "..jjkss...",
+    ".jjjksss..",
+    "hhhhhhhhhh",
+  ]);
   function drawBoats(t, heroOff) {
     const gap = 560, speed = 20;
+    const w = BOAT_ART.w;
     const k0 = Math.floor((t * speed - 300) / gap), k1 = Math.ceil((t * speed + vw + 60) / gap);
     for (let k = k0; k <= k1; k++) {
       if (hash2(k, 151) > 0.65) continue;
       const x = k * gap + hash2(k, 152) * 240 - t * speed;
       const col = Math.floor(x / cw);
-      if (col < -6 || col > cols) continue;
+      if (col < -w - 4 || col > cols) continue;
       const wi = 7 + ((hash2(k, 153) * 3) | 0);
       let wet = true;
-      for (let i = -1; i <= 6 && wet; i += 7) wet = isWater(belowPlace((col + i + 0.5) * cw, wi, t));
+      for (let i = -1; i <= w && wet; i += w + 1) wet = isWater(belowPlace((col + i + 0.5) * cw, wi, t));
       if (!wet) continue;
-      const r0 = screenRow(L.waterTop + ch * (wi + 0.5), heroOff);
-      for (let j = 0; j < BOAT.length; j++) {
-        for (let i = 0; i < BOAT[j].length; i++) {
-          if (BOAT[j][i] !== " ") putCell(col + i, r0 - 2 + j, (G(BOAT[j][i]) << 7) | (j === 2 ? cr(CLAY, 0) : 1));
+      const rBase = screenRow(L.waterTop + ch * (wi + 0.5), heroOff);
+      const keys = BOAT_COLOURS[(hash2(k, 154) * BOAT_COLOURS.length) | 0];
+      for (let ly = 0; ly < BOAT_ART.h; ly++) {
+        for (let lx = 0; lx < w; lx++) {
+          const code = artCell(BOAT_ART, lx, ly, keys);
+          if (code >= 0) putCell(col + lx, rBase - ly, code);
         }
       }
-      if (env.night > 0.4) putCell(col + 1, r0 - 3, (G_DOT << 7) | cr(WINDOW, 0));
+      for (let i = 0; i < 4; i++) {
+        if (hash3(k, i, Math.floor(t * 4)) < 0.7) putCell(col + w + i, rBase, ((i < 2 ? G_TILDE : G_DASH) << 7) | cr(SNOW, i < 2 ? 0 : 1));
+      }
+      if (env.night > 0.4) putCell(col + 4, rBase - BOAT_ART.h, (G_DOT << 7) | cr(WINDOW, 0));
     }
   }
 
@@ -2434,8 +2546,8 @@
     }
     for (let lot = Math.floor((shift - 12) / LOT_NEAR); lot <= Math.floor((shift + cols) / LOT_NEAR); lot++) {
       if (hash2(lot, 341) >= 0.55) continue;
-      const c = lot * LOT_NEAR + 10 - shift;
-      if (c >= 0 && c < cols && NBI[c] === VILLAGE && !inPiece(lot * LOT_NEAR + 10)) puffs(c, 8, lot + 500, t, heroOff);
+      const c = lot * LOT_NEAR + 9 - shift;
+      if (c >= 0 && c < cols && NBI[c] === VILLAGE && !inPiece(lot * LOT_NEAR + 9)) puffs(c, 9, lot + 500, t, heroOff);
     }
   }
 
@@ -2839,7 +2951,7 @@
     const r0 = Math.max(0, Math.floor((car.y - 30 + frac) / ch)), r1 = Math.min(rows - 1, Math.ceil((car.y + car.h + frac) / ch) + 1);
     for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) prevCode[r * cols + c] = -9;
     paintSprite(CAR, ox, oy + bump, pD, heroFade, 0, pal);
-    const frame = reduced ? 0 : Math.floor(t * 12) % 2;
+    const frame = reduced ? 0 : mod(Math.floor(t * 12), 2);
     for (let w = 0; w < WHEELS_AT.length; w++) {
       const [wx, wy] = WHEELS_AT[w];
       paintSprite(WHEEL[frame], ox + wx * pD, oy + wy * pD, pD, heroFade, 50 + w * 9, pal);
@@ -2969,7 +3081,6 @@
     const heroVisible = heroFade > 0 && L.groundEnd - heroOff > 0;
     const needCalm = heroFade < 1 || vh + heroOff > L.groundEnd;
     computeEnv(t);
-    zzKey = -1;
     if (needCalm) computeTraces(t, rowOff * ch);
     if (heroVisible) computeColumns(t);
     // The night tint fades out quickly once the page scrolls, so the sections
